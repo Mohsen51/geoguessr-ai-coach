@@ -51,6 +51,13 @@ def test_render_html_places_images_links_and_text(duel, tmp_path):
     assert "Study Bahia" in page
 
 
+def test_markdown_keeps_nested_lists_with_three_space_indent():
+    text = "1. **Clues:**\n   - red soil\n   - brick\n2. **Pin:** Bahia\n"
+    out = report._md(text)
+    assert out.count("<li>") == 4 and "<ul>" in out and "<ol>" in out
+    assert "- red soil" not in out
+
+
 def test_write_report_saves_html(duel, tmp_path, monkeypatch):
     from geocoach import config
 
