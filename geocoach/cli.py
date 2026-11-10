@@ -103,7 +103,8 @@ def main(ctx: typer.Context) -> None:
 MENU_HELP = """\
 # geocoach menu
 
-Every entry asks its inputs with fzf, runs, then waits for Enter before the menu comes back.
+Every entry asks its inputs with fzf (pick "custom..." to type any number of duels), runs,
+then waits for Enter before the menu comes back.
 Esc or Ctrl-C at any prompt returns to the menu or quits. Each entry has a subcommand twin.
 
 - **Analyze recent duels** (`geocoach analyze --last N --mode nm|nmpz|both`, options
@@ -143,12 +144,32 @@ def pause() -> None:
         raise typer.Exit(0) from None
 
 
+CUSTOM_LAST = "custom..."
+
+
+def ask_number(prompt: str, minimum: int = 1, maximum: int = 500) -> int | None:
+    """Ask for an integer on the console; None on empty input, EOF or Ctrl-C."""
+    while True:
+        try:
+            raw = console.input(f"{prompt} ({minimum}-{maximum}): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return None
+        if not raw:
+            return None
+        if raw.isdigit() and minimum <= int(raw) <= maximum:
+            return int(raw)
+        err.print(f"[yellow]enter a whole number between {minimum} and {maximum}[/yellow]")
+
+
 def _ask_last_and_mode() -> tuple[int, str]:
-    last = pick([str(n) for n in LAST_CHOICES], "last N duels")
+    choice = pick([str(n) for n in LAST_CHOICES] + [CUSTOM_LAST], "last N duels")
+    if not choice:
+        raise typer.Exit(0)
+    last = ask_number("how many duels") if choice == CUSTOM_LAST else int(choice)
     mode = pick(list(MODE_CHOICES), "mode") if last else None
     if not last or not mode:
         raise typer.Exit(0)
-    return int(last), mode
+    return last, mode
 
 
 def _menu_analyze() -> None:

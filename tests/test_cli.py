@@ -245,3 +245,23 @@ def test_index_metas_runs_ingest_then_digest(monkeypatch):
     monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
     assert run.invoke(cli.app, []).exit_code == 0
     assert calls == ["ingest", "digest"]
+
+
+def test_menu_custom_last_number(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(cli, "run_stats", lambda last, mode: captured.update(last=last, mode=mode))
+    answers = iter(["Stats", cli.CUSTOM_LAST, "nm", "Quit"])
+    monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
+    typed = iter(["abc", "0", "42"])
+    monkeypatch.setattr(cli.console, "input", lambda *a, **k: next(typed))
+    result = run.invoke(cli.app, [])
+    assert result.exit_code == 0, result.output
+    assert captured == {"last": 42, "mode": "nm"}
+    assert "whole number" in result.output
+
+
+def test_ask_number_returns_none_on_empty_or_eof(monkeypatch):
+    monkeypatch.setattr(cli.console, "input", lambda *a, **k: "")
+    assert cli.ask_number("n") is None
+    monkeypatch.setattr(cli.console, "input", lambda *a, **k: (_ for _ in ()).throw(EOFError()))
+    assert cli.ask_number("n") is None
