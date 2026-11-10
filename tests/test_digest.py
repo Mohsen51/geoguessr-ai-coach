@@ -46,6 +46,7 @@ def test_digest_stores_descriptions_and_is_idempotent(metas_dir):
 
     def fake_run(prompt, name, model=None, echo=None, use_mcp=True):
         prompts.append(prompt)
+        assert model == "haiku"
         path = [line[2:] for line in prompt.splitlines() if line.startswith("- /")][0]
         echo(f'[{{"page": "{path}", "description": "Map of Bahia with square poles in red."}}]')
         return config.REPORTS_DIR / "x.md"

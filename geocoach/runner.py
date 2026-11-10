@@ -12,6 +12,8 @@ from pathlib import Path
 from geocoach import config
 
 ALLOWED_TOOLS = ("Read", "mcp__geocoach__*")
+ANALYSIS_MODEL = "sonnet"
+DIGEST_MODEL = "haiku"
 
 
 def write_mcp_config(path: Path | None = None) -> Path:
@@ -29,7 +31,7 @@ def write_mcp_config(path: Path | None = None) -> Path:
     return path
 
 
-def build_command(mcp_config: Path | None, model: str | None = None) -> list[str]:
+def build_command(mcp_config: Path | None, model: str | None = ANALYSIS_MODEL) -> list[str]:
     cmd = ["claude", "-p", "--output-format", "text"]
     if mcp_config is not None:
         cmd += ["--mcp-config", str(mcp_config), "--strict-mcp-config"]
@@ -49,7 +51,7 @@ def build_command(mcp_config: Path | None, model: str | None = None) -> list[str
 def run_claude(
     prompt: str,
     report_name: str,
-    model: str | None = None,
+    model: str | None = ANALYSIS_MODEL,
     echo: Callable[[str], None] = lambda s: sys.stdout.write(s),
     command: list[str] | None = None,
     use_mcp: bool = True,

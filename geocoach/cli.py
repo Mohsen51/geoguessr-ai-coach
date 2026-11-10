@@ -147,7 +147,7 @@ def run_analyze(
     mode: str = "both",
     max_rounds: int = 12,
     full: bool = False,
-    model: str | None = None,
+    model: str = runner.ANALYSIS_MODEL,
     no_sync: bool = False,
     focus: str = "region",
 ) -> None:
@@ -194,7 +194,7 @@ def analyze(
     mode: str = typer.Option("both", "--mode", help="nm, nmpz or both"),
     max_rounds: int = typer.Option(12, help="max rounds to review"),
     full: bool = typer.Option(False, "--full", help="three views per round"),
-    model: str | None = typer.Option(None, help="claude model override"),
+    model: str = typer.Option(runner.ANALYSIS_MODEL, help="claude model: sonnet, opus, fable"),
     no_sync: bool = typer.Option(False, "--no-sync", help="skip fetching new duels"),
     focus: str = typer.Option("region", help="region (default), country or all"),
 ) -> None:
@@ -376,7 +376,7 @@ def ingest(force: bool = typer.Option(False, "--force", help="re-index unchanged
     run_ingest(force)
 
 
-def run_digest(batch: int = 8, doc: str | None = None, model: str | None = None) -> None:
+def run_digest(batch: int = 8, doc: str | None = None, model: str = runner.DIGEST_MODEL) -> None:
     from geocoach import digest as digest_mod
 
     n = digest_mod.digest(
@@ -390,7 +390,7 @@ def run_digest(batch: int = 8, doc: str | None = None, model: str | None = None)
 def digest(
     batch: int = typer.Option(8, help="page images per Claude call"),
     doc: str | None = typer.Option(None, help="only PDFs whose name contains this"),
-    model: str | None = typer.Option(None),
+    model: str = typer.Option(runner.DIGEST_MODEL, help="claude model, haiku is enough here"),
 ) -> None:
     """Describe image-heavy PDF pages with Claude so maps and photos become searchable."""
     run_digest(batch, doc, model)
