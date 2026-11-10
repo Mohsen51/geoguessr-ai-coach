@@ -6,7 +6,7 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from geocoach import analysis, config, metas
+from geocoach import analysis, config, metas, slashp
 from geocoach.duels import Mode
 from geocoach.store import Store
 
@@ -129,6 +129,29 @@ def get_meta_pages(country: str, limit: int = 6) -> dict[str, Any]:
         "chunks": metas.chunks_for_country(store, country, limit=20),
         "page_images": [str(metas.render_page(doc, page)) for doc, page in pages],
     }
+
+
+@server.tool(
+    description="Training maps from slashP's directory covering the given ISO country codes, "
+    "or the weak countries of the last N duels when none are given."
+)
+def recommend_maps(
+    country_codes: list[str] | None = None,
+    n_games: int = 10,
+    mode: str = "all",
+    min_locations: int = 5000,
+    include_subdivisions: bool = False,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    if country_codes:
+        weak = {c.lower(): 1.0 for c in country_codes}
+    else:
+        reviews = analysis.round_reviews(get_store(), n_games, parse_modes(mode))
+        weak = {w["country"]: float(w["points_lost"]) for w in analysis.weak_countries(reviews)}
+    if not weak:
+        return []
+    cats = slashp.DEFAULT_CATEGORIES + (("Subdivision",) if include_subdivisions else ())
+    return slashp.recommend(slashp.load_maps(), weak, min_locations, cats, limit)
 
 
 def main() -> None:
