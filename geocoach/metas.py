@@ -25,6 +25,29 @@ ALIASES = {
     "reunion": "re", "faroe islands": "fo", "falklands": "fk", "us virgin islands": "vi",
     "northern mariana islands": "mp", "christmas island": "cx", "cocos islands": "cc",
 }  # fmt: skip
+DEMONYMS = {
+    "brazilian": "br", "russian": "ru", "american": "us", "canadian": "ca", "mexican": "mx",
+    "argentinian": "ar", "argentine": "ar", "chilean": "cl", "peruvian": "pe", "colombian": "co",
+    "bolivian": "bo", "ecuadorian": "ec", "uruguayan": "uy", "french": "fr", "german": "de",
+    "spanish": "es", "portuguese": "pt", "italian": "it", "british": "gb", "irish": "ie",
+    "dutch": "nl", "belgian": "be", "swiss": "ch", "austrian": "at", "polish": "pl", "czech": "cz",
+    "slovak": "sk", "hungarian": "hu", "romanian": "ro", "bulgarian": "bg", "greek": "gr",
+    "turkish": "tr", "ukrainian": "ua", "swedish": "se", "norwegian": "no", "finnish": "fi",
+    "danish": "dk", "icelandic": "is", "estonian": "ee", "latvian": "lv", "lithuanian": "lt",
+    "serbian": "rs", "croatian": "hr", "slovenian": "si", "albanian": "al", "montenegrin": "me",
+    "bosnian": "ba", "macedonian": "mk", "japanese": "jp", "korean": "kr", "taiwanese": "tw",
+    "thai": "th", "malaysian": "my", "indonesian": "id", "filipino": "ph", "philippine": "ph",
+    "cambodian": "kh", "vietnamese": "vn", "laotian": "la", "mongolian": "mn", "indian": "in",
+    "sri lankan": "lk", "bangladeshi": "bd", "bhutanese": "bt", "nepali": "np", "pakistani": "pk",
+    "kazakh": "kz", "kyrgyz": "kg", "israeli": "il", "jordanian": "jo", "emirati": "ae",
+    "qatari": "qa", "omani": "om", "lebanese": "lb", "tunisian": "tn", "moroccan": "ma",
+    "egyptian": "eg", "kenyan": "ke", "ugandan": "ug", "rwandan": "rw", "tanzanian": "tz",
+    "south african": "za", "botswanan": "bw", "namibian": "na", "lesotho": "ls", "eswatini": "sz",
+    "ghanaian": "gh", "nigerian": "ng", "senegalese": "sn", "malagasy": "mg", "australian": "au",
+    "new zealand": "nz", "kiwi": "nz", "guatemalan": "gt", "panamanian": "pa", "costa rican": "cr",
+    "dominican": "do", "puerto rican": "pr", "curaçao": "cw", "greenlandic": "gl",
+}  # fmt: skip
+UPPER_ABBREVIATIONS = {"US": "us", "USA": "us", "UK": "gb", "UAE": "ae", "NZ": "nz"}
 
 
 def _country_patterns() -> list[tuple[re.Pattern, str]]:
@@ -35,8 +58,11 @@ def _country_patterns() -> list[tuple[re.Pattern, str]]:
         if common:
             names[common.lower()] = c.alpha_2.lower()
     names.update(ALIASES)
+    names.update(DEMONYMS)
     ordered = sorted(names.items(), key=lambda kv: -len(kv[0]))
-    return [(re.compile(rf"\b{re.escape(n)}\b", re.I), code) for n, code in ordered]
+    pats = [(re.compile(rf"\b{re.escape(n)}\b", re.I), code) for n, code in ordered]
+    pats += [(re.compile(rf"\b{a}\b"), code) for a, code in UPPER_ABBREVIATIONS.items()]
+    return pats
 
 
 _PATTERNS: list[tuple[re.Pattern, str]] | None = None
@@ -51,6 +77,11 @@ def tag_countries(text: str) -> list[str]:
         if code not in found and pat.search(text):
             found.append(code)
     return found
+
+
+def doc_tags(filename: str) -> list[str]:
+    """Countries named in the file name, applied to every page of that document."""
+    return tag_countries(Path(filename).stem.replace("_", " ").replace("-", " "))
 
 
 def chunk_text(text: str, size: int = CHUNK_CHARS) -> list[str]:
@@ -76,8 +107,10 @@ def sha256_of(path: Path) -> str:
     return h.hexdigest()
 
 
-def ingest(store: Store, metas_dir: Path = config.METAS_DIR, log=lambda _: None) -> int:
-    """Index new or changed PDFs. Returns number of documents (re)indexed."""
+def ingest(
+    store: Store, metas_dir: Path = config.METAS_DIR, log=lambda _: None, force: bool = False
+) -> int:
+    """Index new or changed PDFs (all of them with force). Returns documents (re)indexed."""
     import pymupdf
 
     done = 0
@@ -86,7 +119,7 @@ def ingest(store: Store, metas_dir: Path = config.METAS_DIR, log=lambda _: None)
         row = store.conn.execute(
             "SELECT sha256 FROM meta_docs WHERE doc = ?", (pdf.name,)
         ).fetchone()
-        if row and row["sha256"] == sha:
+        if row and row["sha256"] == sha and not force:
             continue
         with pymupdf.open(pdf) as doc, store.conn:
             n_pages = doc.page_count
@@ -95,11 +128,14 @@ def ingest(store: Store, metas_dir: Path = config.METAS_DIR, log=lambda _: None)
                 "INSERT INTO meta_docs VALUES (?,?,?,?)",
                 (pdf.name, sha, n_pages, int(time.time() * 1000)),
             )
+            base = doc_tags(pdf.name)
             for page in doc:
-                for chunk in chunk_text(page.get_text()):
+                chunks = chunk_text(page.get_text()) or [""]
+                for chunk in chunks:
+                    tags = base + [c for c in tag_countries(chunk) if c not in base]
                     store.conn.execute(
                         "INSERT INTO meta_chunks(doc, page, country_tags, text) VALUES (?,?,?,?)",
-                        (pdf.name, page.number + 1, " ".join(tag_countries(chunk)), chunk),
+                        (pdf.name, page.number + 1, " ".join(tags), chunk),
                     )
         done += 1
         log(f"indexed {pdf.name} ({n_pages} pages)")
@@ -128,20 +164,30 @@ def search(store: Store, query: str, country: str | None = None, limit: int = 8)
 def chunks_for_country(store: Store, country: str, limit: int = 20) -> list[dict]:
     rows = store.conn.execute(
         "SELECT id, doc, page, country_tags, text FROM meta_chunks "
-        "WHERE (' ' || country_tags || ' ') LIKE ? ORDER BY doc, page LIMIT ?",
+        "WHERE (' ' || country_tags || ' ') LIKE ? AND text != '' "
+        "ORDER BY length(text) DESC, doc, page LIMIT ?",
         (f"% {country.lower()} %", limit),
     ).fetchall()
     return [dict(r) for r in rows]
 
 
 def pages_for_country(store: Store, country: str, limit: int = 6) -> list[tuple[str, int]]:
+    """Pages tagged with the country, interleaved across documents, text-richest first."""
     rows = store.conn.execute(
-        "SELECT doc, page, count(*) AS hits FROM meta_chunks "
+        "SELECT doc, page, sum(length(text)) AS chars FROM meta_chunks "
         "WHERE (' ' || country_tags || ' ') LIKE ? GROUP BY doc, page "
-        "ORDER BY hits DESC, doc, page LIMIT ?",
-        (f"% {country.lower()} %", limit),
+        "ORDER BY chars DESC, doc, page",
+        (f"% {country.lower()} %",),
     ).fetchall()
-    return [(r["doc"], r["page"]) for r in rows]
+    by_doc: dict[str, list[tuple[str, int]]] = {}
+    for r in rows:
+        by_doc.setdefault(r["doc"], []).append((r["doc"], r["page"]))
+    out: list[tuple[str, int]] = []
+    while len(out) < limit and any(by_doc.values()):
+        for pages in by_doc.values():
+            if pages and len(out) < limit:
+                out.append(pages.pop(0))
+    return out
 
 
 def render_page(doc: str, page: int, metas_dir: Path = config.METAS_DIR, dpi: int = 110) -> Path:

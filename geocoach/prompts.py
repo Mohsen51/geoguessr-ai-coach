@@ -10,15 +10,17 @@ def _km(m: float) -> str:
     return f"{m / 1000:.0f} km"
 
 
-def round_block(r: RoundReview, images: list[str], meta_snippets: list[str]) -> str:
+def round_block(
+    r: RoundReview, images: list[str], meta_snippets: list[str], clues: list[str] = ()
+) -> str:
+    timing = f", answered in {r.time_to_guess_s:.0f}s" if r.time_to_guess_s else ""
     lines = [
         f"### Round {r.n} of duel {r.game_id[:8]} ({r.mode.upper()}, x{r.multiplier:g})",
         f"- Actual: {country_name(r.country)} ({r.country}) at {r.lat:.4f}, {r.lng:.4f}",
-        f"- My guess: {country_name(r.guess_country) or 'none'}, {_km(r.distance_m)} off, "
-        f"{r.my_score} pts"
-        + (f", answered in {r.time_to_guess_s:.0f}s" if r.time_to_guess_s else ""),
-        f"- Opponent: {country_name(r.opp_guess_country) or 'none'}, {_km(r.opp_distance_m)} off, "
-        f"{r.opp_score} pts",
+        f"- My guess: {country_name(r.guess_country) or 'none'} at {r.guess_lat:.3f}, "
+        f"{r.guess_lng:.3f}, {_km(r.distance_m)} off, {r.my_score} pts{timing}",
+        f"- Opponent: {country_name(r.opp_guess_country) or 'none'} at {r.opp_guess_lat:.3f}, "
+        f"{r.opp_guess_lng:.3f}, {_km(r.opp_distance_m)} off, {r.opp_score} pts",
         f"- Outcome: {r.loss_type.replace('_', ' ')}, {r.damage_taken} damage taken",
     ]
     if images:
@@ -29,6 +31,9 @@ def round_block(r: RoundReview, images: list[str], meta_snippets: list[str]) -> 
     if meta_snippets:
         lines.append("- Meta notes from my PDFs:")
         lines += [f"  > {s.strip()[:600]}" for s in meta_snippets]
+    if clues:
+        lines.append(f"- GeoGuessr clue cards for {country_name(r.country)}:")
+        lines += [f"  * {c}" for c in clues]
     return "\n".join(lines)
 
 
@@ -62,15 +67,22 @@ Aggregates: weakest countries: {weak or "n/a"}. Confusions: {conf or "n/a"}.
     return header + "\n\n" + "\n\n".join(blocks) + "\n"
 
 
-def encyclopedia_prompt(country: str, chunks: list[dict], page_images: list[str]) -> str:
+def encyclopedia_prompt(
+    country: str, chunks: list[dict], page_images: list[str], clues: list[str] = ()
+) -> str:
     notes = "\n\n".join(f"[{c['doc']} p.{c['page']}]\n{c['text']}" for c in chunks)
     pages = "\n".join(f"- {p}" for p in page_images)
+    cards = "\n".join(f"- {c}" for c in clues)
     return f"""Build a GeoGuessr No Move / NMPZ meta sheet for {country_name(country)} ({country}).
 Sections: camera generation and car meta, roads and road lines, bollards and poles, signs and
 plates, language and domains, landscape and vegetation, regional splits (how to tell north from
 south etc.), and the countries it is most confused with and how to separate them.
-Mark each fact as [doc] when it comes from my PDF notes below or [memory] when it is your own
-knowledge, and flag anything you are unsure about. Read the page images for figures.
+Mark each fact as [doc] when it comes from my PDF notes below, [gg] when it comes from the
+GeoGuessr clue cards, or [memory] when it is your own knowledge, and flag anything you are
+unsure about. Read the page images for figures.
+
+GeoGuessr clue cards:
+{cards or "(none)"}
 
 My PDF notes:
 {notes or "(none)"}
