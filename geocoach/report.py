@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-import markdown
+from markdown_it import MarkdownIt
 
 from geocoach import config
 from geocoach.analysis import RoundReview
@@ -94,8 +94,12 @@ def _match_round(m: re.Match, by_order: list[RoundReview], rounds: list[RoundRev
     return None
 
 
+_MD = MarkdownIt("commonmark", {"typographer": False})
+
+
 def _md(text: str) -> str:
-    return markdown.markdown(text, extensions=["extra", "sane_lists"])
+    """CommonMark rendering: tolerant of the 3-space nested lists Claude writes."""
+    return _MD.render(text)
 
 
 def render_html(bundle: AnalysisBundle, answer: str, title: str) -> str:
