@@ -1,0 +1,9 @@
+{
+  "entries": [
+    {"type": 7, "time": "2026-11-09T18:05:00Z", "user": {"id": "me-0001"},
+     "payload": "[{\"type\":6,\"time\":\"2026-11-09T18:05:00Z\",\"payload\":{\"gameId\":\"11111111-2222-3333-4444-555555555555\",\"gameMode\":\"Duels\",\"competitiveGameMode\":\"StandardDuels\"}},{\"type\":6,\"time\":\"2026-11-09T17:00:00Z\",\"payload\":{\"gameId\":\"aaaaaaaa-0000-0000-0000-000000000002\",\"gameMode\":\"Duels\",\"competitiveGameMode\":\"StandardDuels\"}}]"},
+    {"type": 1, "time": "2026-11-09T16:00:00Z", "user": {"id": "me-0001"},
+     "payload": "{\"mapSlug\":\"world\",\"gameMode\":\"Standard\",\"gameToken\":\"tok\",\"points\":12000}"}
+  ],
+  "paginationToken": "page2"
+}
