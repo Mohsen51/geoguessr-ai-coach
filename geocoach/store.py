@@ -1,0 +1,150 @@
+"""SQLite persistence for duels, rounds and guesses."""
+
+from __future__ import annotations
+
+import sqlite3
+from collections.abc import Iterable
+from pathlib import Path
+
+from geocoach.duels import Duel, Guess, Mode, Round, RoundResult
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS duels (
+    game_id TEXT PRIMARY KEY,
+    played_at_ms INTEGER,
+    mode TEXT NOT NULL,
+    rated INTEGER NOT NULL,
+    my_team TEXT,
+    won INTEGER,
+    my_rating INTEGER,
+    opp_rating INTEGER,
+    opp_nick TEXT
+);
+CREATE TABLE IF NOT EXISTS rounds (
+    game_id TEXT NOT NULL REFERENCES duels(game_id) ON DELETE CASCADE,
+    n INTEGER NOT NULL,
+    pano_id TEXT, pano_hex TEXT,
+    lat REAL, lng REAL, country TEXT,
+    heading REAL, pitch REAL, zoom REAL,
+    multiplier REAL, damage_multiplier REAL, healing INTEGER,
+    start_ms INTEGER, end_ms INTEGER,
+    PRIMARY KEY (game_id, n)
+);
+CREATE TABLE IF NOT EXISTS guesses (
+    game_id TEXT NOT NULL REFERENCES duels(game_id) ON DELETE CASCADE,
+    n INTEGER NOT NULL,
+    player_id TEXT NOT NULL,
+    is_me INTEGER NOT NULL,
+    lat REAL, lng REAL, distance_m REAL, score INTEGER, created_ms INTEGER,
+    guess_country TEXT,
+    PRIMARY KEY (game_id, n, player_id)
+);
+CREATE TABLE IF NOT EXISTS round_results (
+    game_id TEXT NOT NULL REFERENCES duels(game_id) ON DELETE CASCADE,
+    n INTEGER NOT NULL,
+    my_health_before INTEGER, my_health_after INTEGER,
+    opp_health_before INTEGER, opp_health_after INTEGER,
+    PRIMARY KEY (game_id, n)
+);
+CREATE INDEX IF NOT EXISTS idx_duels_mode_time ON duels(mode, played_at_ms DESC);
+"""
+
+
+class Store:
+    def __init__(self, path: Path | str = ":memory:"):
+        self.conn = sqlite3.connect(str(path))
+        self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA foreign_keys = ON")
+        self.conn.executescript(SCHEMA)
+
+    def close(self) -> None:
+        self.conn.close()
+
+    def has_duel(self, game_id: str) -> bool:
+        row = self.conn.execute("SELECT 1 FROM duels WHERE game_id = ?", (game_id,)).fetchone()
+        return row is not None
+
+    def upsert_duel(self, duel: Duel, guess_countries: dict[tuple[int, str], str] | None = None):
+        """Insert or replace a duel and children. guess_countries maps (round, player) to ISO."""
+        gc = guess_countries or {}
+        with self.conn:
+            self.conn.execute("DELETE FROM duels WHERE game_id = ?", (duel.game_id,))
+            self.conn.execute(
+                "INSERT INTO duels VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    duel.game_id,
+                    duel.played_at_ms,
+                    duel.mode.value,
+                    int(duel.rated),
+                    duel.my_team,
+                    None if duel.won is None else int(duel.won),
+                    duel.my_rating,
+                    duel.opp_rating,
+                    duel.opp_nick,
+                ),
+            )
+            self.conn.executemany(
+                "INSERT INTO rounds VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [_round_row(duel.game_id, r) for r in duel.rounds],
+            )
+            self.conn.executemany(
+                "INSERT INTO guesses VALUES (?,?,?,?,?,?,?,?,?,?)",
+                [
+                    _guess_row(duel.game_id, g, gc.get((g.round_number, g.player_id)))
+                    for g in duel.guesses
+                ],
+            )
+            self.conn.executemany(
+                "INSERT INTO round_results VALUES (?,?,?,?,?,?)",
+                [_result_row(duel.game_id, rr) for rr in duel.round_results],
+            )
+
+    def recent_duels(
+        self, n: int, modes: Iterable[Mode] | None = None, rated_only: bool = True
+    ) -> list[sqlite3.Row]:
+        mode_list = [m.value for m in modes] if modes else [m.value for m in Mode]
+        marks = ",".join("?" * len(mode_list))
+        sql = f"SELECT * FROM duels WHERE mode IN ({marks})"
+        params: list = list(mode_list)
+        if rated_only:
+            sql += " AND rated = 1"
+        sql += " ORDER BY played_at_ms DESC LIMIT ?"
+        params.append(n)
+        return self.conn.execute(sql, params).fetchall()
+
+    def rounds_for(self, game_id: str) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM rounds WHERE game_id = ? ORDER BY n", (game_id,)
+        ).fetchall()
+
+    def guesses_for(self, game_id: str) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM guesses WHERE game_id = ? ORDER BY n, is_me DESC", (game_id,)
+        ).fetchall()
+
+    def results_for(self, game_id: str) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM round_results WHERE game_id = ? ORDER BY n", (game_id,)
+        ).fetchall()
+
+
+def _round_row(game_id: str, r: Round) -> tuple:
+    return (
+        game_id, r.number, r.pano_id, r.pano_hex, r.lat, r.lng, r.country,
+        r.heading, r.pitch, r.zoom, r.multiplier, r.damage_multiplier,
+        int(r.healing), r.start_ms, r.end_ms,
+    )  # fmt: skip
+
+
+def _guess_row(game_id: str, g: Guess, country: str | None) -> tuple:
+    return (
+        game_id, g.round_number, g.player_id, int(g.is_me), g.lat, g.lng,
+        g.distance_m, g.score, g.created_ms, country,
+    )  # fmt: skip
+
+
+def _result_row(game_id: str, rr: RoundResult) -> tuple:
+    return (
+        game_id, rr.number, rr.my_health_before, rr.my_health_after,
+        rr.opp_health_before, rr.opp_health_after,
+    )  # fmt: skip
