@@ -42,11 +42,17 @@ class GeoGuessrClient:
         self._client.close()
 
     def _get(self, url: str, params: dict[str, str] | None = None) -> httpx.Response:
+        return self._request("GET", url, params=params)
+
+    def _post(self, url: str, body: Any) -> httpx.Response:
+        return self._request("POST", url, json=body)
+
+    def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         for attempt in range(3):
             wait = self._min_interval - (time.monotonic() - self._last)
             if wait > 0:
                 time.sleep(wait)
-            resp = self._client.get(url, params=params)
+            resp = self._client.request(method, url, **kwargs)
             self._last = time.monotonic()
             if resp.status_code == 429:
                 time.sleep(2 * (attempt + 1))
@@ -80,9 +86,32 @@ class GeoGuessrClient:
                 yield game_id
 
     def duel_summary(self, game_id: str) -> dict[str, Any]:
-        """Return pageProps of the duel summary page."""
+        """Return pageProps of the duel summary page (fallback, HTML scraping)."""
         html = self._get(f"/duels/{game_id}/summary").text
         return parse_next_data(html)["props"]["pageProps"]
+
+    def duel_results(self, game_ids: list[str], batch: int = 20) -> list[dict[str, Any]]:
+        """Full duel results (rounds, guesses, health, ratings) for many games at once."""
+        out: list[dict[str, Any]] = []
+        for i in range(0, len(game_ids), batch):
+            chunk = game_ids[i : i + batch]
+            resp = self._post("/api/v4/game-results/duels/by-game-ids", {"gameIds": chunk})
+            out.extend(resp.json())
+        return out
+
+    def user_id(self) -> str:
+        return self._get("/api/v3/profiles").json()["user"]["id"]
+
+    def ranked_progress(self, user_id: str) -> dict[str, Any]:
+        """Rating per mode, division, best and worst countries, last results."""
+        return self._get(f"/api/v4/ranked-system/progress/{user_id}").json()
+
+    def stats_me(self) -> dict[str, Any]:
+        return self._get("/api/v4/stats/me").json()
+
+    def country_clues(self, country: str) -> list[dict[str, Any]]:
+        """GeoGuessr's own clue cards for a country (title, description, image path)."""
+        return self._get(f"/api/v4/clues/country/{country.lower()}").json()
 
 
 def _flatten_payload(payload: Any) -> Iterator[dict[str, Any]]:
