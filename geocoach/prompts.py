@@ -1,0 +1,80 @@
+"""Prompt templates for the Claude-backed modes."""
+
+from __future__ import annotations
+
+from geocoach.analysis import RoundReview
+from geocoach.geocode import country_name
+
+
+def _km(m: float) -> str:
+    return f"{m / 1000:.0f} km"
+
+
+def round_block(r: RoundReview, images: list[str], meta_snippets: list[str]) -> str:
+    lines = [
+        f"### Round {r.n} of duel {r.game_id[:8]} ({r.mode.upper()}, x{r.multiplier:g})",
+        f"- Actual: {country_name(r.country)} ({r.country}) at {r.lat:.4f}, {r.lng:.4f}",
+        f"- My guess: {country_name(r.guess_country) or 'none'}, {_km(r.distance_m)} off, "
+        f"{r.my_score} pts"
+        + (f", answered in {r.time_to_guess_s:.0f}s" if r.time_to_guess_s else ""),
+        f"- Opponent: {country_name(r.opp_guess_country) or 'none'}, {_km(r.opp_distance_m)} off, "
+        f"{r.opp_score} pts",
+        f"- Outcome: {r.loss_type.replace('_', ' ')}, {r.damage_taken} damage taken",
+    ]
+    if images:
+        lines.append("- Images to Read (what I saw, heading as shown in-game):")
+        lines += [f"  - {p}" for p in images]
+    else:
+        lines.append("- No image available for this round.")
+    if meta_snippets:
+        lines.append("- Meta notes from my PDFs:")
+        lines += [f"  > {s.strip()[:600]}" for s in meta_snippets]
+    return "\n".join(lines)
+
+
+def analysis_prompt(
+    blocks: list[str], mode_label: str, n_games: int, rating: int | None, summary: dict
+) -> str:
+    weak = ", ".join(
+        f"{country_name(w['country'])} ({w['points_lost']} pts over {w['rounds']} rounds)"
+        for w in summary.get("weak_countries", [])[:6]
+    )
+    conf = ", ".join(
+        f"{country_name(c['actual'])} guessed as {country_name(c['guessed'])} x{c['count']}"
+        for c in summary.get("confusions", [])[:6]
+    )
+    header = f"""You are coaching a GeoGuessr duel player (rating about {rating or "unknown"})
+who plays {mode_label}. I lost points on the rounds below, taken from my last {n_games} rated
+duels. For each round, Read the image(s), then tell me:
+1. The visible clues that point to the actual country and region (camera generation, car,
+   road lines, bollards, poles, signs, plates, vegetation, soil, architecture, language).
+   Be specific about what is in the picture, do not list generic meta that is not visible.
+2. Why I likely guessed what I guessed, and the single clue that should have separated the two.
+3. For rounds where I had the country but lost on pin: which regional clue narrows the location.
+
+Then a cross-round summary: recurring confusions, whether I answer too fast or too slow, and a
+study list of at most 5 items (country or region plus the exact clue to learn). Use the meta
+notes from my PDFs when they apply and call get_meta_pages for a country if the notes are thin.
+Keep it concrete.
+
+Aggregates: weakest countries: {weak or "n/a"}. Confusions: {conf or "n/a"}.
+"""
+    return header + "\n\n" + "\n\n".join(blocks) + "\n"
+
+
+def encyclopedia_prompt(country: str, chunks: list[dict], page_images: list[str]) -> str:
+    notes = "\n\n".join(f"[{c['doc']} p.{c['page']}]\n{c['text']}" for c in chunks)
+    pages = "\n".join(f"- {p}" for p in page_images)
+    return f"""Build a GeoGuessr No Move / NMPZ meta sheet for {country_name(country)} ({country}).
+Sections: camera generation and car meta, roads and road lines, bollards and poles, signs and
+plates, language and domains, landscape and vegetation, regional splits (how to tell north from
+south etc.), and the countries it is most confused with and how to separate them.
+Mark each fact as [doc] when it comes from my PDF notes below or [memory] when it is your own
+knowledge, and flag anything you are unsure about. Read the page images for figures.
+
+My PDF notes:
+{notes or "(none)"}
+
+Page images to Read:
+{pages or "(none)"}
+"""
