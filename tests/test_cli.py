@@ -175,3 +175,21 @@ def test_pause_exits_cleanly_on_eof(monkeypatch):
     monkeypatch.setattr(cli.console, "input", lambda *a, **k: (_ for _ in ()).throw(EOFError()))
     with pytest.raises(cli.typer.Exit):
         ORIGINAL_PAUSE()
+
+
+def test_menu_help_lists_every_entry(monkeypatch):
+    answers = iter(["Help", "Quit"])
+    monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
+    out = run.invoke(cli.app, []).output
+    for entry in (
+        "Analyze recent duels",
+        "Training map",
+        "Encyclopedia",
+        "Stats",
+        "Sync duels",
+        "Sync plonkit guides",
+        "Build encyclopedia sheets",
+        "Ingest meta PDFs",
+        "Digest PDF images",
+    ):
+        assert entry in out

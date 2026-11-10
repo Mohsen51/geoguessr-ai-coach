@@ -88,6 +88,7 @@ def main(ctx: typer.Context) -> None:
         "Build encyclopedia sheets": run_build_sheets,
         "Ingest meta PDFs": run_ingest,
         "Digest PDF images with Claude": run_digest,
+        "Help": show_help,
         "Quit": None,
     }
     while True:
@@ -101,6 +102,42 @@ def main(ctx: typer.Context) -> None:
         except Exception as exc:  # noqa: BLE001 - keep the menu alive, show the error
             err.print(f"[red]{type(exc).__name__}: {exc}[/red]")
         pause()
+
+
+MENU_HELP = """\
+# geocoach menu
+
+Every entry asks its inputs with fzf, runs, then waits for Enter before the menu comes back.
+Esc or Ctrl-C at any prompt returns to the menu or quits. Each entry has a subcommand twin.
+
+- **Analyze recent duels** (`geocoach analyze --last N --mode nm|nmpz|both`, options
+  `--focus region|country|all`, `--model opus`):
+  syncs new rated duels, picks the lost rounds with the most points lost (pin losses first),
+  fetches the Street View views, and asks Claude (Sonnet by default) to read them against
+  plonkit's regional clues, your PDF notes and the GeoGuessr clue cards. Report in `data/reports/`.
+  One to three minutes.
+- **Training map** (`geocoach training`): ranks slashP maps by how much they cover your weak
+  countries, lets you pick one and opens it. No Claude.
+- **Encyclopedia** (`geocoach encyclopedia <cc>`): shows the plonkit-based sheet from
+  `encyclopedia/`, regional sections first. Instant, no Claude.
+- **Stats** (`geocoach stats`): weak countries and regions, region and country confusions,
+  time-to-guess buckets, rating trend. Local only.
+- **Sync duels** (`geocoach sync`): fetches rated duels and geocodes every location and guess.
+  Analyze does this itself; use it before Stats or Training.
+- **Sync plonkit guides** (`geocoach plonkit`): refreshes the local plonkit index used by Analyze.
+  Paced, with backoff. Rarely needed.
+- **Build encyclopedia sheets** (`geocoach build-sheets`): renders the sheets from the cached
+  guides. The monthly workflow does this for the repo.
+- **Ingest meta PDFs** (`geocoach ingest [--force]`): indexes new or changed PDFs from `metas/`.
+- **Digest PDF images with Claude** (`geocoach digest`): describes image-only PDF pages with
+  Haiku so maps and photos become searchable. Incremental.
+
+Secrets: `GEOGUESSR_NCFA` in `.envrc` or `.env`. Data and caches live in `data/`.
+"""
+
+
+def show_help() -> None:
+    console.print(Markdown(MENU_HELP))
 
 
 def pause() -> None:
