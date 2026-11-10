@@ -1,0 +1,69 @@
+{
+  "userId": "me-0001",
+  "game": {
+    "gameId": "11111111-2222-3333-4444-555555555555",
+    "status": "Finished",
+    "version": 30,
+    "result": {"isDraw": false, "winningTeamId": "team-red", "winnerStyle": "Victory"},
+    "options": {
+      "initialHealth": 6000,
+      "roundTime": 15,
+      "isRated": true,
+      "isTeamDuels": false,
+      "competitiveGameMode": "StandardDuels",
+      "movementOptions": {"forbidMoving": true, "forbidZooming": true, "forbidRotating": true}
+    },
+    "rounds": [
+      {
+        "roundNumber": 1, "multiplier": 1, "damageMultiplier": 1, "isHealingRound": false,
+        "startTime": "2026-11-09T18:00:00.000Z", "endTime": "2026-11-09T18:00:20.000Z",
+        "panorama": {"panoId": "525053344542684272524343795031544A744B567577",
+                     "lat": -23.5, "lng": -46.6, "countryCode": "br",
+                     "heading": 172, "pitch": 0, "zoom": 0}
+      },
+      {
+        "roundNumber": 2, "multiplier": 1.5, "damageMultiplier": 1.5, "isHealingRound": false,
+        "startTime": "2026-11-09T18:00:30.000Z", "endTime": "2026-11-09T18:00:50.000Z",
+        "panorama": {"panoId": "4142434445464748494A4B4C4D4E4F505152535455",
+                     "lat": 60.1, "lng": 24.9, "countryCode": "fi",
+                     "heading": 45, "pitch": 0, "zoom": 0}
+      }
+    ],
+    "teams": [
+      {
+        "id": "team-blue", "name": "blue", "health": 0,
+        "players": [{
+          "playerId": "me-0001", "nick": "me", "countryCode": "fr",
+          "competitive": {"rating": 905, "division": {"type": "Master"}},
+          "guesses": [
+            {"roundNumber": 1, "lat": -34.6, "lng": -58.4, "distance": 1500000.0,
+             "score": 2500, "created": 1794247210000, "isTeamsBestGuessOnRound": true},
+            {"roundNumber": 2, "lat": 59.3, "lng": 18.1, "distance": 400000.0,
+             "score": 4200, "created": 1794247240000, "isTeamsBestGuessOnRound": true}
+          ]
+        }],
+        "roundResults": [
+          {"roundNumber": 1, "score": 2500, "healthBefore": 6000, "healthAfter": 4500},
+          {"roundNumber": 2, "score": 4200, "healthBefore": 4500, "healthAfter": 3900}
+        ]
+      },
+      {
+        "id": "team-red", "name": "red", "health": 6000,
+        "players": [{
+          "playerId": "opp-0002", "nick": "opponent", "countryCode": "de",
+          "competitive": {"rating": 930, "division": {"type": "Master"}},
+          "guesses": [
+            {"roundNumber": 1, "lat": -22.9, "lng": -43.2, "distance": 350000.0,
+             "score": 4000, "created": 1794247205000, "isTeamsBestGuessOnRound": true},
+            {"roundNumber": 2, "lat": 60.2, "lng": 25.0, "distance": 12000.0,
+             "score": 4600, "created": 1794247238000, "isTeamsBestGuessOnRound": true}
+          ]
+        }],
+        "roundResults": [
+          {"roundNumber": 1, "score": 4000, "healthBefore": 6000, "healthAfter": 6000},
+          {"roundNumber": 2, "score": 4600, "healthBefore": 6000, "healthAfter": 6000}
+        ]
+      }
+    ]
+  }
+}
