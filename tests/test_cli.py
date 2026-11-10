@@ -79,3 +79,43 @@ def test_sync_without_cookie_fails_cleanly(monkeypatch):
     result = run.invoke(cli.app, ["sync"])
     assert result.exit_code == 1
     assert "_ncfa" in result.output
+
+
+def test_menu_analyze_passes_plain_defaults(monkeypatch):
+    """Regression: menu entries used to call typer commands with Option objects as defaults."""
+    captured = {}
+
+    class FakeFetcher:
+        def views_for_round(self, *a, **k):
+            return []
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("geocoach.panorama.ViewFetcher", FakeFetcher)
+    monkeypatch.setattr(cli, "make_client", lambda required=True: None)
+    monkeypatch.setattr(
+        cli.runner,
+        "run_claude",
+        lambda prompt, name, model=None: captured.update(n=name) or config.REPORTS_DIR / "r.md",
+    )
+    answers = iter(["Analyze recent duels", "5", "nmpz"])
+    monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
+    result = run.invoke(cli.app, [])
+    assert result.exit_code == 0, result.output
+    assert captured["n"] == "analysis_nmpz_5" and captured["synced"] == 5
+
+
+def test_menu_training_and_ingest_use_plain_defaults(monkeypatch, tmp_path):
+    maps = [{"mapName": "A Balanced India", "mapId": "a" * 24, "category": "Country",
+             "locationCount": 50000, "likes": 1, "plays": 1,
+             "countryDistribution": [{"code": "IN", "count": 50000}]}]  # fmt: skip
+    monkeypatch.setattr(cli.slashp, "load_maps", lambda: maps)
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: None)
+    answers = iter(["Training map", "5", "nmpz", None])
+    monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
+    assert run.invoke(cli.app, []).exit_code == 0
+    monkeypatch.setattr(config, "METAS_DIR", tmp_path)
+    monkeypatch.setattr(cli, "pick", lambda options, prompt: "Ingest meta PDFs")
+    result = run.invoke(cli.app, [])
+    assert result.exit_code == 0 and "0 documents indexed" in result.output
