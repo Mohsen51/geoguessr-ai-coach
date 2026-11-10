@@ -52,15 +52,20 @@ def open_store() -> Store:
     return Store(config.DB_PATH)
 
 
-def do_sync(store: Store, last: int, modes: list[Mode]) -> int:
+def make_client(required: bool = True):
     from geocoach.gg_api import GeoGuessrClient
 
     try:
-        cookie = config.get_cookie()
+        return GeoGuessrClient(config.get_cookie())
     except config.MissingCookieError as exc:
+        if not required:
+            return None
         err.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from None
-    client = GeoGuessrClient(cookie)
+
+
+def do_sync(store: Store, last: int, modes: list[Mode]) -> int:
+    client = make_client()
     try:
         return sync.sync(store, client, last, modes, log=lambda m: err.print(f"[dim]{m}[/dim]"))
     finally:
@@ -203,9 +208,15 @@ def training(
 def encyclopedia(
     country: str = typer.Argument(..., help="ISO code, e.g. br"),
     model: str | None = typer.Option(None),
+    pages: int = typer.Option(6, help="max PDF pages rendered for Claude"),
 ) -> None:
-    """Meta sheet for one country from your PDFs plus Claude's knowledge."""
-    prompt = coach.prepare_encyclopedia(open_store(), country)
+    """Meta sheet for one country from your PDFs, GeoGuessr clue cards and Claude's knowledge."""
+    client = make_client(required=False)
+    prompt = coach.prepare_encyclopedia(
+        open_store(), country, pages, clue_fetch=client.country_clues if client else None
+    )
+    if client:
+        client.close()
     report = runner.run_claude(prompt, f"encyclopedia_{country.lower()}", model)
     err.print(f"[green]report saved to {report}[/green]")
 
@@ -258,9 +269,9 @@ def sync_cmd(
 
 
 @app.command()
-def ingest() -> None:
+def ingest(force: bool = typer.Option(False, "--force", help="re-index unchanged PDFs")) -> None:
     """Index the PDFs in metas/."""
-    n = metas.ingest(open_store(), log=lambda m: err.print(f"[dim]{m}[/dim]"))
+    n = metas.ingest(open_store(), log=lambda m: err.print(f"[dim]{m}[/dim]"), force=force)
     console.print(f"{n} documents indexed")
 
 

@@ -31,6 +31,13 @@ def test_tag_countries_word_boundaries():
     assert metas.tag_countries("nothing here") == []
 
 
+def test_tag_countries_demonyms_and_abbreviations():
+    assert metas.tag_countries("Brazilian poles and Russian cars") == ["br", "ru"]
+    assert metas.tag_countries("US rumble strips") == ["us"]
+    assert metas.tag_countries("tell us more") == []
+    assert metas.doc_tags("The Complete Guide To Russian Car Metas.pdf") == ["ru"]
+
+
 def test_chunk_text_splits_on_paragraphs():
     text = "\n\n".join(["para " * 50] * 5)
     chunks = metas.chunk_text(text, size=600)
@@ -48,6 +55,21 @@ def test_ingest_search_and_pages(metas_dir):
     assert metas.search(store, "yellow", country="br")[0]["page"] == 1
     assert metas.pages_for_country(store, "uy") == [("south-america.pdf", 2)]
     assert [c["page"] for c in metas.chunks_for_country(store, "ar")] == [2]
+
+
+def test_ingest_tags_image_only_pages_from_filename(tmp_path):
+    doc = pymupdf.open()
+    doc.new_page().insert_text((50, 72), "Look at the pole shapes below.", fontsize=11)
+    doc.new_page()  # image-only page, no text
+    doc.save(tmp_path / "Brazilian Poles.pdf")
+    doc.close()
+    store = Store()
+    metas.ingest(store, tmp_path)
+    assert metas.pages_for_country(store, "br") == [
+        ("Brazilian Poles.pdf", 1),
+        ("Brazilian Poles.pdf", 2),
+    ]
+    assert [c["page"] for c in metas.chunks_for_country(store, "br")] == [1]
 
 
 def test_render_page(metas_dir, monkeypatch, tmp_path):
