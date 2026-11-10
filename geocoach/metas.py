@@ -172,13 +172,22 @@ def chunks_for_country(store: Store, country: str, limit: int = 20) -> list[dict
 
 
 def pages_for_country(store: Store, country: str, limit: int = 6) -> list[tuple[str, int]]:
+    """Pages tagged with the country, interleaved across documents, text-richest first."""
     rows = store.conn.execute(
-        "SELECT doc, page, count(*) AS hits FROM meta_chunks "
+        "SELECT doc, page, sum(length(text)) AS chars FROM meta_chunks "
         "WHERE (' ' || country_tags || ' ') LIKE ? GROUP BY doc, page "
-        "ORDER BY hits DESC, doc, page LIMIT ?",
-        (f"% {country.lower()} %", limit),
+        "ORDER BY chars DESC, doc, page",
+        (f"% {country.lower()} %",),
     ).fetchall()
-    return [(r["doc"], r["page"]) for r in rows]
+    by_doc: dict[str, list[tuple[str, int]]] = {}
+    for r in rows:
+        by_doc.setdefault(r["doc"], []).append((r["doc"], r["page"]))
+    out: list[tuple[str, int]] = []
+    while len(out) < limit and any(by_doc.values()):
+        for pages in by_doc.values():
+            if pages and len(out) < limit:
+                out.append(pages.pop(0))
+    return out
 
 
 def render_page(doc: str, page: int, metas_dir: Path = config.METAS_DIR, dpi: int = 110) -> Path:
