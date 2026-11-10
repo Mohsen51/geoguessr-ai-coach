@@ -64,6 +64,14 @@ def test_analyze_builds_prompt_and_calls_runner(monkeypatch):
     assert "Actual: India" in captured["p"]
 
 
+ORIGINAL_PAUSE = cli.pause
+
+
+@pytest.fixture(autouse=True)
+def no_pause(monkeypatch):
+    monkeypatch.setattr(cli, "pause", lambda: None)
+
+
 def test_menu_dispatches_via_fzf(monkeypatch):
     answers = iter(["Stats", "5", "nmpz", "Quit"])
     monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
@@ -152,3 +160,18 @@ def test_encyclopedia_shows_repo_sheet(monkeypatch, tmp_path):
     answers = iter(["Encyclopedia", "in  India", "Quit"])
     monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
     assert "Ladder poles" in run.invoke(cli.app, []).output
+
+
+def test_menu_pauses_after_each_task(monkeypatch):
+    pauses = []
+    monkeypatch.setattr(cli, "pause", lambda: pauses.append(1))
+    answers = iter(["Stats", "5", "nmpz", "Quit"])
+    monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
+    assert run.invoke(cli.app, []).exit_code == 0
+    assert pauses == [1]
+
+
+def test_pause_exits_cleanly_on_eof(monkeypatch):
+    monkeypatch.setattr(cli.console, "input", lambda *a, **k: (_ for _ in ()).throw(EOFError()))
+    with pytest.raises(cli.typer.Exit):
+        ORIGINAL_PAUSE()

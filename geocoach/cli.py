@@ -100,7 +100,15 @@ def main(ctx: typer.Context) -> None:
             pass
         except Exception as exc:  # noqa: BLE001 - keep the menu alive, show the error
             err.print(f"[red]{type(exc).__name__}: {exc}[/red]")
-        console.print()
+        pause()
+
+
+def pause() -> None:
+    """Wait for Enter before showing the menu again, so output stays readable."""
+    try:
+        console.input("\n[dim]Press Enter to return to the menu...[/dim]")
+    except (EOFError, KeyboardInterrupt):
+        raise typer.Exit(0) from None
 
 
 def _ask_last_and_mode() -> tuple[int, str]:
