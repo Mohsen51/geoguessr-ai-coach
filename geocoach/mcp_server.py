@@ -7,7 +7,7 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from geocoach import analysis, config, metas, slashp
+from geocoach import analysis, config, metas, plonkit, slashp
 from geocoach.duels import Mode
 from geocoach.store import Store
 
@@ -156,6 +156,19 @@ def get_weak_spots(n_games: int = 10, mode: str = "all", max_rounds: int = 12):
 )
 def search_metas(query: str, country: str | None = None, limit: int = 8) -> list[dict[str, Any]]:
     return metas.search(get_store(), query, country, limit)
+
+
+@server.tool(
+    description="Plonkit guide for an ISO country code: all sections, or only the tips matching "
+    "a query (e.g. 'bollard', 'plate', 'pole'). Base knowledge, use before the PDF notes."
+)
+def get_plonkit(country: str, query: str | None = None, limit: int = 15) -> dict[str, Any]:
+    store = get_store()
+    if query:
+        hits = metas.search(store, query, country, limit)
+        tips = [h["text"] for h in hits if h["doc"].startswith(plonkit.DOC_PREFIX)]
+        return {"country": country.lower(), "query": query, "tips": tips}
+    return {"country": country.lower(), "sections": plonkit.sections_for_country(store, country)}
 
 
 @server.tool(description="Meta chunks and rendered PDF page images for one ISO country code.")

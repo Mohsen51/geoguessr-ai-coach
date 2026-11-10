@@ -16,6 +16,7 @@ def round_block(
     meta_snippets: list[str],
     clues: list[str] = (),
     meta_pages: list[str] = (),
+    plonkit_tips: list[str] = (),
 ) -> str:
     timing = f", answered in {r.time_to_guess_s:.0f}s" if r.time_to_guess_s else ""
     lines = [
@@ -32,8 +33,13 @@ def round_block(
         lines += [f"  - {p}" for p in images]
     else:
         lines.append("- No image available for this round.")
+    if plonkit_tips:
+        lines.append(
+            f"- Plonkit, identifying {country_name(r.country)} (call get_plonkit for more):"
+        )
+        lines += [f"  * {t[:500]}" for t in plonkit_tips]
     if meta_snippets:
-        lines.append("- Meta notes from my PDFs:")
+        lines.append("- Bonus notes from my community PDFs:")
         lines += [f"  > {s.strip()[:600]}" for s in meta_snippets]
     if clues:
         lines.append(f"- GeoGuessr clue cards for {country_name(r.country)}:")
@@ -65,9 +71,9 @@ duels. For each round, Read the image(s), then tell me:
 3. For rounds where I had the country but lost on pin: which regional clue narrows the location.
 
 Then a cross-round summary: recurring confusions, whether I answer too fast or too slow, and a
-study list of at most 5 items (country or region plus the exact clue to learn). Use the meta
-notes from my PDFs when they apply and call get_meta_pages for a country if the notes are thin.
-Keep it concrete.
+study list of at most 5 items (country or region plus the exact clue to learn). Plonkit is the
+base knowledge: call get_plonkit(country, query) to check a clue you see in the image. My PDF
+notes are a bonus on top; call get_meta_pages for a country if they look relevant. Keep it concrete.
 
 Aggregates: weakest countries: {weak or "n/a"}. Confusions: {conf or "n/a"}.
 """
@@ -75,23 +81,40 @@ Aggregates: weakest countries: {weak or "n/a"}. Confusions: {conf or "n/a"}.
 
 
 def encyclopedia_prompt(
-    country: str, chunks: list[dict], page_images: list[str], clues: list[str] = ()
+    country: str,
+    chunks: list[dict],
+    page_images: list[str],
+    clues: list[str] = (),
+    plonkit_sections: list[dict] = (),
+    plonkit_images: list[tuple[str, str]] = (),
 ) -> str:
     notes = "\n\n".join(f"[{c['doc']} p.{c['page']}]\n{c['text']}" for c in chunks)
     pages = "\n".join(f"- {p}" for p in page_images)
     cards = "\n".join(f"- {c}" for c in clues)
+    plonkit = "\n\n".join(
+        f"## {sec['section']}\n" + "\n".join(f"- {t}" for t in sec["tips"])
+        for sec in plonkit_sections
+    )
+    plonkit_imgs = "\n".join(f"- {path}: {caption}" for caption, path in plonkit_images)
     return f"""Build a GeoGuessr No Move / NMPZ meta sheet for {country_name(country)} ({country}).
 Sections: camera generation and car meta, roads and road lines, bollards and poles, signs and
 plates, language and domains, landscape and vegetation, regional splits (how to tell north from
 south etc.), and the countries it is most confused with and how to separate them.
-Mark each fact as [doc] when it comes from my PDF notes below, [gg] when it comes from the
-GeoGuessr clue cards, or [memory] when it is your own knowledge, and flag anything you are
-unsure about. Read the page images for figures.
+Plonkit is the base knowledge: structure the sheet from it. My PDF notes are a bonus with
+more specific or regional detail. Mark each fact as [plonkit], [doc] (my PDF notes), [gg]
+(GeoGuessr clue cards) or [memory] (your own knowledge), and flag anything you are unsure
+about. Read the plonkit and PDF page images for the visual clues.
+
+Plonkit guide:
+{plonkit or "(not synced, run: geocoach plonkit)"}
+
+Plonkit images to Read (path: caption):
+{plonkit_imgs or "(none)"}
 
 GeoGuessr clue cards:
 {cards or "(none)"}
 
-My PDF notes:
+My PDF notes (bonus):
 {notes or "(none)"}
 
 Page images to Read:

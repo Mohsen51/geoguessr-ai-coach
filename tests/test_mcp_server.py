@@ -60,6 +60,7 @@ def test_tools_registered_and_callable(seeded):
         "get_weak_spots",
         "search_metas",
         "get_meta_pages",
+        "get_plonkit",
         "recommend_maps",
     }
     result = asyncio.run(mcp_server.server.call_tool("get_recent_duels", {"n": 3, "mode": "nmpz"}))
@@ -95,3 +96,18 @@ def test_ranked_snapshot_without_cookie(monkeypatch):
     monkeypatch.setattr(config, "_keychain_cookie", lambda: None)
     monkeypatch.setattr(config, "ROOT", config.DATA_DIR)
     assert mcp_server.ranked_snapshot() is None
+
+
+def test_get_plonkit_sections_and_query(seeded):
+    from pathlib import Path
+
+    from geocoach import plonkit
+
+    guide = plonkit.parse_preloaded(
+        (Path(__file__).parent / "fixtures" / "plonkit_guide.html").read_text()
+    )
+    plonkit.ingest_guide(seeded, "testland", "TL", guide)
+    out = mcp_server.get_plonkit("TL")
+    assert [s["section"] for s in out["sections"]][0] == "Identifying Testland"
+    hits = mcp_server.get_plonkit("tl", query="poles")
+    assert hits["tips"] and "Concrete poles" in hits["tips"][0]

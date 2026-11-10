@@ -11,7 +11,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from geocoach import analysis, coach, config, metas, runner, slashp, sync
+from geocoach import analysis, coach, config, metas, plonkit, runner, slashp, sync
 from geocoach.duels import Mode
 from geocoach.geocode import country_name
 from geocoach.store import Store
@@ -83,12 +83,22 @@ def main(ctx: typer.Context) -> None:
         "Encyclopedia": _menu_encyclopedia,
         "Stats": _menu_stats,
         "Sync duels": _menu_sync,
+        "Sync plonkit guides": run_plonkit,
         "Ingest meta PDFs": run_ingest,
         "Digest PDF images with Claude": run_digest,
+        "Quit": None,
     }
-    choice = pick(list(menu), "geocoach")
-    if choice:
-        menu[choice]()
+    while True:
+        choice = pick(list(menu), "geocoach")
+        if not choice or menu[choice] is None:
+            return
+        try:
+            menu[choice]()
+        except typer.Exit:
+            pass
+        except Exception as exc:  # noqa: BLE001 - keep the menu alive, show the error
+            err.print(f"[red]{type(exc).__name__}: {exc}[/red]")
+        console.print()
 
 
 def _ask_last_and_mode() -> tuple[int, str]:
@@ -120,12 +130,24 @@ def _menu_sync() -> None:
 
 
 def _menu_encyclopedia() -> None:
-    store = open_store()
-    rows = store.conn.execute(
-        "SELECT country_tags FROM meta_chunks WHERE country_tags != ''"
-    ).fetchall()
-    codes = sorted({c for r in rows for c in r["country_tags"].split()})
-    options = [f"{c}  {country_name(c)}" for c in codes] or ["(no PDFs indexed, type a code)"]
+    client = plonkit.PlonkitClient()
+    try:
+        index = [g for g in client.guide_index() if g.get("code")]
+    except Exception as exc:  # noqa: BLE001 - offline fallback to local tags
+        err.print(f"[dim]plonkit index unavailable ({exc}), using local tags[/dim]")
+        index = []
+    finally:
+        client.close()
+    if index:
+        options = sorted(f"{g['code'].lower()}  {g['title']}" for g in index)
+    else:
+        rows = (
+            open_store()
+            .conn.execute("SELECT country_tags FROM meta_chunks WHERE country_tags != ''")
+            .fetchall()
+        )
+        codes = sorted({c for r in rows for c in r["country_tags"].split()})
+        options = [f"{c}  {country_name(c)}" for c in codes] or ["(nothing indexed, type a code)"]
     choice = pick(options, "country")
     if not choice:
         raise typer.Exit(0)
@@ -228,11 +250,17 @@ def training(
 
 def run_encyclopedia(country: str, model: str | None = None, pages: int = 6) -> None:
     client = make_client(required=False)
-    prompt = coach.prepare_encyclopedia(
-        open_store(), country, pages, clue_fetch=client.country_clues if client else None
-    )
-    if client:
-        client.close()
+    pk = plonkit.PlonkitClient()
+    try:
+        prompt = coach.prepare_encyclopedia(
+            open_store(), country, pages,
+            clue_fetch=client.country_clues if client else None,
+            plonkit_client=pk,
+        )  # fmt: skip
+    finally:
+        pk.close()
+        if client:
+            client.close()
     report = runner.run_claude(prompt, f"encyclopedia_{country.lower()}", model)
     err.print(f"[green]report saved to {report}[/green]")
 
@@ -300,6 +328,26 @@ def sync_cmd(
 ) -> None:
     """Fetch recent rated duels into the local database."""
     run_sync(last, mode)
+
+
+def run_plonkit(countries: list[str] | None = None) -> None:
+    client = plonkit.PlonkitClient()
+    try:
+        n = plonkit.sync(
+            open_store(), client, countries, log=lambda m: err.print(f"[dim]{m}[/dim]")
+        )
+    finally:
+        client.close()
+    console.print(f"{n} plonkit guides indexed")
+
+
+COUNTRY_OPTION = typer.Option(None, "--country", help="ISO codes, default all guides")
+
+
+@app.command("plonkit")
+def plonkit_cmd(country: list[str] = COUNTRY_OPTION) -> None:
+    """Fetch and index plonkit guides (base knowledge for every mode)."""
+    run_plonkit(country or None)
 
 
 def run_ingest(force: bool = False) -> None:

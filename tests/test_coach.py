@@ -67,7 +67,7 @@ def test_prepare_analysis_survives_image_failure(store):
 def test_prepare_encyclopedia_without_docs(store):
     prompt = coach.prepare_encyclopedia(store, "BR")
     assert "meta sheet for Brazil (br)" in prompt
-    assert prompt.count("(none)") == 3
+    assert prompt.count("(none)") == 4 and "not synced" in prompt
 
 
 def test_prepare_analysis_attaches_meta_page_image(store, tmp_path, monkeypatch):
@@ -86,3 +86,36 @@ def test_prepare_analysis_attaches_meta_page_image(store, tmp_path, monkeypatch)
     bundle = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], max_rounds=1)
     assert "Meta PDF page(s) about this country" in bundle.prompt
     assert "India guide_p001.png" in bundle.prompt
+
+
+def test_prepare_analysis_uses_plonkit_tips_first(store):
+    from geocoach import plonkit
+
+    guide = plonkit.parse_preloaded(
+        (
+            __import__("pathlib").Path(__file__).parent / "fixtures" / "plonkit_guide.html"
+        ).read_text()
+    )
+    plonkit.ingest_guide(store, "india", "IN", guide)
+    bundle = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], max_rounds=1)
+    assert "Plonkit, identifying India" in bundle.prompt
+    assert "Testland uses **yellow** plates" in bundle.prompt
+    assert (
+        bundle.prompt.index("Plonkit, identifying") < bundle.prompt.index("Bonus notes")
+        if "Bonus notes" in bundle.prompt
+        else True
+    )
+
+
+def test_prepare_encyclopedia_with_plonkit_sections(store):
+    from geocoach import plonkit
+
+    guide = plonkit.parse_preloaded(
+        (
+            __import__("pathlib").Path(__file__).parent / "fixtures" / "plonkit_guide.html"
+        ).read_text()
+    )
+    plonkit.ingest_guide(store, "testland", "TL", guide)
+    prompt = coach.prepare_encyclopedia(store, "tl")
+    assert "## Identifying Testland" in prompt and "Concrete poles with holes" in prompt
+    assert prompt.index("Plonkit guide:") < prompt.index("My PDF notes (bonus):")
