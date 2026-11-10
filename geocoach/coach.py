@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from geocoach import analysis, metas, prompts
+from geocoach import analysis, clues, metas, prompts
 from geocoach.analysis import RoundReview
 from geocoach.duels import Mode
 from geocoach.panorama import PanoramaError, ViewFetcher
@@ -31,6 +31,7 @@ def prepare_analysis(
     max_rounds: int = 12,
     full_pano: bool = False,
     log: Callable[[str], None] = lambda _: None,
+    clue_fetch: Callable[[str], list[dict]] | None = None,
 ) -> AnalysisBundle:
     reviews = analysis.round_reviews(store, n_games, modes)
     picked = analysis.select_rounds_for_review(reviews, max_rounds)
@@ -46,7 +47,8 @@ def prepare_analysis(
                 log(f"round {r.n} of {r.game_id[:8]}: {exc}")
         images[(r.game_id, r.n)] = paths
         snippets = [c["text"] for c in metas.chunks_for_country(store, r.country, limit=2)]
-        blocks.append(prompts.round_block(r, paths, snippets))
+        cards = clue_lines(clue_fetch, r.country)
+        blocks.append(prompts.round_block(r, paths, snippets, cards))
     summary = {
         "weak_countries": analysis.weak_countries(reviews),
         "confusions": analysis.confusions(reviews),
@@ -56,10 +58,24 @@ def prepare_analysis(
     return AnalysisBundle(prompt=prompt, rounds=picked, images=images)
 
 
-def prepare_encyclopedia(store: Store, country: str, max_pages: int = 6) -> str:
+def clue_lines(
+    clue_fetch: Callable[[str], list[dict]] | None, country: str, limit: int = 12
+) -> list[str]:
+    if clue_fetch is None or not country:
+        return []
+    return clues.format_clues(clues.cached_clues(clue_fetch, country), limit)
+
+
+def prepare_encyclopedia(
+    store: Store,
+    country: str,
+    max_pages: int = 6,
+    clue_fetch: Callable[[str], list[dict]] | None = None,
+) -> str:
     country = country.lower()
     chunks = metas.chunks_for_country(store, country, limit=30)
     pages = [
         str(metas.render_page(d, p)) for d, p in metas.pages_for_country(store, country, max_pages)
     ]
-    return prompts.encyclopedia_prompt(country, chunks, pages)
+    cards = clue_lines(clue_fetch, country, 20)
+    return prompts.encyclopedia_prompt(country, chunks, pages, cards)

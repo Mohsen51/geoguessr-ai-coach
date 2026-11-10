@@ -37,6 +37,22 @@ def test_prepare_analysis_builds_prompt_with_images(store):
     assert "Actual: India (in)" in p and "My guess: Bangladesh" in p
     assert "PANO1xxxxxxxxxxxxxxxxx_y116.jpg" in p
     assert "India (3059 pts over 1 rounds)" in p
+    assert "Bangladesh at 23.861" in p and "Opponent: India at 22.709" in p
+
+
+def test_prepare_analysis_includes_clue_cards(store, tmp_path):
+    calls = []
+
+    def fetch(cc):
+        calls.append(cc)
+        return [{"type": "poles", "title": "Ladder poles", "description": "Concrete steps.",
+                 "regions": [{"name": "North"}]}]  # fmt: skip
+
+    bundle = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], max_rounds=1, clue_fetch=fetch)
+    assert calls == ["in"]
+    assert "poles: Ladder poles. Concrete steps. (regions: North)" in bundle.prompt
+    bundle = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], max_rounds=1, clue_fetch=fetch)
+    assert calls == ["in"]  # second call served from the disk cache
 
 
 def test_prepare_analysis_survives_image_failure(store):
@@ -51,4 +67,4 @@ def test_prepare_analysis_survives_image_failure(store):
 def test_prepare_encyclopedia_without_docs(store):
     prompt = coach.prepare_encyclopedia(store, "BR")
     assert "meta sheet for Brazil (br)" in prompt
-    assert "(none)" in prompt
+    assert prompt.count("(none)") == 3

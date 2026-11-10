@@ -36,6 +36,10 @@ class RoundReview:
     lng: float
     heading: float
     pitch: float
+    guess_lat: float = 0.0
+    guess_lng: float = 0.0
+    opp_guess_lat: float = 0.0
+    opp_guess_lng: float = 0.0
 
     @property
     def country_hit(self) -> bool:
@@ -104,6 +108,10 @@ def round_reviews(store: Store, n_games: int, modes: Iterable[Mode]) -> list[Rou
                     lng=r["lng"],
                     heading=r["heading"],
                     pitch=r["pitch"],
+                    guess_lat=me["lat"] or 0.0,
+                    guess_lng=me["lng"] or 0.0,
+                    opp_guess_lat=(opp["lat"] if opp else 0.0) or 0.0,
+                    opp_guess_lng=(opp["lng"] if opp else 0.0) or 0.0,
                 )
             )
     return reviews
