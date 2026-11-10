@@ -83,11 +83,7 @@ def main(ctx: typer.Context) -> None:
         "Training map": _menu_training,
         "Encyclopedia": _menu_encyclopedia,
         "Stats": _menu_stats,
-        "Sync duels": _menu_sync,
-        "Sync plonkit guides": run_plonkit,
-        "Build encyclopedia sheets": run_build_sheets,
-        "Ingest meta PDFs": run_ingest,
-        "Digest PDF images with Claude": run_digest,
+        "Index meta PDFs": run_index_metas,
         "Help": show_help,
         "Quit": None,
     }
@@ -122,15 +118,13 @@ Esc or Ctrl-C at any prompt returns to the menu or quits. Each entry has a subco
   `encyclopedia/`, regional sections first. Instant, no Claude.
 - **Stats** (`geocoach stats`): weak countries and regions, region and country confusions,
   time-to-guess buckets, rating trend. Local only.
-- **Sync duels** (`geocoach sync`): fetches rated duels and geocodes every location and guess.
-  Analyze does this itself; use it before Stats or Training.
-- **Sync plonkit guides** (`geocoach plonkit`): refreshes the local plonkit index used by Analyze.
-  Paced, with backoff. Rarely needed.
-- **Build encyclopedia sheets** (`geocoach build-sheets`): renders the sheets from the cached
-  guides. The monthly workflow does this for the repo.
-- **Ingest meta PDFs** (`geocoach ingest [--force]`): indexes new or changed PDFs from `metas/`.
-- **Digest PDF images with Claude** (`geocoach digest`): describes image-only PDF pages with
-  Haiku so maps and photos become searchable. Incremental.
+- **Index meta PDFs** (`geocoach ingest` then `geocoach digest`): indexes new or changed PDFs
+  from `metas/`, then describes their image pages with Haiku so maps and photos become
+  searchable. Incremental, only new pages cost anything.
+
+Analyze, Stats and Training sync your duels themselves when a cookie is set, and Analyze
+fetches the plonkit guides it needs. Maintenance subcommands still exist: `geocoach sync`,
+`geocoach plonkit`, `geocoach build-sheets`, `geocoach ingest --force`.
 
 Secrets: `GEOGUESSR_NCFA` in `.envrc` or `.env`. Data and caches live in `data/`.
 """
@@ -171,9 +165,18 @@ def _menu_stats() -> None:
     run_stats(last, mode)
 
 
-def _menu_sync() -> None:
-    last, mode = _ask_last_and_mode()
-    run_sync(last, mode)
+def auto_sync(store: Store, last: int, modes: list[Mode]) -> None:
+    """Sync duels when a cookie is available; stay local otherwise."""
+    client = make_client(required=False)
+    if client is None:
+        err.print("[dim]no cookie, using stored duels only[/dim]")
+        return
+    try:
+        sync.sync(store, client, last, modes, log=lambda m: err.print(f"[dim]{m}[/dim]"))
+    except Exception as exc:  # noqa: BLE001 - offline or expired cookie, keep local data
+        err.print(f"[yellow]sync skipped: {exc}[/yellow]")
+    finally:
+        client.close()
 
 
 def _menu_encyclopedia() -> None:
@@ -206,6 +209,7 @@ def run_analyze(
         do_sync(store, last, modes)
     fetcher = ViewFetcher()
     client = make_client(required=False)
+    pk = plonkit.PlonkitClient()
     try:
         bundle = coach.prepare_analysis(
             store,
@@ -217,9 +221,11 @@ def run_analyze(
             log=lambda m: err.print(f"[dim]{m}[/dim]"),
             clue_fetch=client.country_clues if client else None,
             focus=focus,  # type: ignore[arg-type]
+            plonkit_client=pk,
         )
     finally:
         fetcher.close()
+        pk.close()
         if client:
             client.close()
     if not bundle.rounds:
@@ -255,6 +261,7 @@ def run_training(
     no_open: bool = False,
 ) -> None:
     store = open_store()
+    auto_sync(store, last, modes_of(mode))
     reviews = analysis.round_reviews(store, last, modes_of(mode))
     weak = {w["country"]: float(w["points_lost"]) for w in analysis.weak_countries(reviews)}
     if not weak:
@@ -324,6 +331,7 @@ def build_sheets_cmd() -> None:
 def run_stats(last: int = 10, mode: str = "both") -> None:
     store = open_store()
     modes = modes_of(mode)
+    auto_sync(store, last, modes)
     reviews = analysis.round_reviews(store, last, modes)
     if not reviews:
         console.print("No duels stored yet. Run: geocoach sync")
@@ -408,6 +416,12 @@ COUNTRY_OPTION = typer.Option(None, "--country", help="ISO codes, default all gu
 def plonkit_cmd(country: list[str] = COUNTRY_OPTION) -> None:
     """Fetch and index plonkit guides (base knowledge for every mode)."""
     run_plonkit(country or None)
+
+
+def run_index_metas() -> None:
+    """Ingest new or changed PDFs, then digest their image pages with Haiku."""
+    run_ingest()
+    run_digest()
 
 
 def run_ingest(force: bool = False) -> None:

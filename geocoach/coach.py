@@ -33,9 +33,12 @@ def prepare_analysis(
     log: Callable[[str], None] = lambda _: None,
     clue_fetch: Callable[[str], list[dict]] | None = None,
     focus: analysis.Focus = "region",
+    plonkit_client: plonkit.PlonkitClient | None = None,
 ) -> AnalysisBundle:
     reviews = analysis.round_reviews(store, n_games, modes)
     picked = analysis.select_rounds_for_review(reviews, max_rounds, focus)
+    if plonkit_client is not None:
+        ensure_plonkit(store, plonkit_client, {r.country for r in picked if r.country}, log)
     images: dict[tuple[str, int], list[str]] = {}
     blocks = []
     for r in picked:
@@ -63,6 +66,23 @@ def prepare_analysis(
     rating = next((d["my_rating"] for d in store.recent_duels(1, modes)), None)
     prompt = prompts.analysis_prompt(blocks, mode_label(modes), n_games, rating, summary, focus)
     return AnalysisBundle(prompt=prompt, rounds=picked, images=images)
+
+
+def ensure_plonkit(
+    store: Store,
+    client: plonkit.PlonkitClient,
+    countries: set[str],
+    log: Callable[[str], None] = lambda _: None,
+) -> None:
+    """Fetch the plonkit guides missing from the local index for these countries."""
+    missing = [c for c in sorted(countries) if not plonkit.sections_for_country(store, c)]
+    if not missing:
+        return
+    log(f"fetching plonkit guides for {', '.join(missing)}")
+    try:
+        plonkit.sync(store, client, missing, log)
+    except Exception as exc:  # noqa: BLE001 - offline, continue without plonkit
+        log(f"plonkit unavailable: {exc}")
 
 
 def pdf_chunks(store: Store, country: str, limit: int) -> list[dict]:
