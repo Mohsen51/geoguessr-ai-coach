@@ -18,16 +18,17 @@ CREATE TABLE IF NOT EXISTS duels (
     won INTEGER,
     my_rating INTEGER,
     opp_rating INTEGER,
-    opp_nick TEXT
+    opp_id TEXT,
+    map_name TEXT,
+    raw TEXT
 );
 CREATE TABLE IF NOT EXISTS rounds (
     game_id TEXT NOT NULL REFERENCES duels(game_id) ON DELETE CASCADE,
     n INTEGER NOT NULL,
-    pano_id TEXT, pano_hex TEXT,
+    pano_id TEXT,
     lat REAL, lng REAL, country TEXT,
     heading REAL, pitch REAL, zoom REAL,
-    multiplier REAL, damage_multiplier REAL, healing INTEGER,
-    start_ms INTEGER, end_ms INTEGER,
+    multiplier REAL, healing INTEGER,
     PRIMARY KEY (game_id, n)
 );
 CREATE TABLE IF NOT EXISTS guesses (
@@ -35,7 +36,7 @@ CREATE TABLE IF NOT EXISTS guesses (
     n INTEGER NOT NULL,
     player_id TEXT NOT NULL,
     is_me INTEGER NOT NULL,
-    lat REAL, lng REAL, distance_m REAL, score INTEGER, created_ms INTEGER,
+    lat REAL, lng REAL, distance_m REAL, score INTEGER, time_spent_ms INTEGER,
     guess_country TEXT,
     PRIMARY KEY (game_id, n, player_id)
 );
@@ -88,13 +89,12 @@ class Store:
         row = self.conn.execute("SELECT 1 FROM duels WHERE game_id = ?", (game_id,)).fetchone()
         return row is not None
 
-    def upsert_duel(self, duel: Duel, guess_countries: dict[tuple[int, str], str] | None = None):
-        """Insert or replace a duel and children. guess_countries maps (round, player) to ISO."""
-        gc = guess_countries or {}
+    def upsert_duel(self, duel: Duel, raw: str | None = None) -> None:
+        """Insert or replace a duel and its rounds, guesses and health rows."""
         with self.conn:
             self.conn.execute("DELETE FROM duels WHERE game_id = ?", (duel.game_id,))
             self.conn.execute(
-                "INSERT INTO duels VALUES (?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO duels VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     duel.game_id,
                     duel.played_at_ms,
@@ -104,19 +104,18 @@ class Store:
                     None if duel.won is None else int(duel.won),
                     duel.my_rating,
                     duel.opp_rating,
-                    duel.opp_nick,
+                    duel.opp_id,
+                    duel.map_name,
+                    raw,
                 ),
             )
             self.conn.executemany(
-                "INSERT INTO rounds VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO rounds VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 [_round_row(duel.game_id, r) for r in duel.rounds],
             )
             self.conn.executemany(
                 "INSERT INTO guesses VALUES (?,?,?,?,?,?,?,?,?,?)",
-                [
-                    _guess_row(duel.game_id, g, gc.get((g.round_number, g.player_id)))
-                    for g in duel.guesses
-                ],
+                [_guess_row(duel.game_id, g) for g in duel.guesses],
             )
             self.conn.executemany(
                 "INSERT INTO round_results VALUES (?,?,?,?,?,?)",
@@ -154,16 +153,15 @@ class Store:
 
 def _round_row(game_id: str, r: Round) -> tuple:
     return (
-        game_id, r.number, r.pano_id, r.pano_hex, r.lat, r.lng, r.country,
-        r.heading, r.pitch, r.zoom, r.multiplier, r.damage_multiplier,
-        int(r.healing), r.start_ms, r.end_ms,
+        game_id, r.number, r.pano_id, r.lat, r.lng, r.country,
+        r.heading, r.pitch, r.zoom, r.multiplier, int(r.healing),
     )  # fmt: skip
 
 
-def _guess_row(game_id: str, g: Guess, country: str | None) -> tuple:
+def _guess_row(game_id: str, g: Guess) -> tuple:
     return (
         game_id, g.round_number, g.player_id, int(g.is_me), g.lat, g.lng,
-        g.distance_m, g.score, g.created_ms, country,
+        g.distance_m, g.score, g.time_spent_ms, g.country,
     )  # fmt: skip
 
 

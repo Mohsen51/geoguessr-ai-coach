@@ -2,31 +2,27 @@ import pytest
 from typer.testing import CliRunner
 
 from geocoach import cli, config
-from geocoach.duels import parse_duel
 from geocoach.store import Store
 
 run = CliRunner()
 
 
 @pytest.fixture(autouse=True)
-def tmp_env(tmp_path, monkeypatch, duel_page_props):
+def tmp_env(tmp_path, monkeypatch, duel):
     for name in ("DATA_DIR", "PANOS_DIR", "PAGES_DIR", "REPORTS_DIR"):
         monkeypatch.setattr(config, name, tmp_path / name.lower())
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "db.sqlite")
     config.ensure_dirs()
     store = Store(config.DB_PATH)
-    store.upsert_duel(
-        parse_duel(duel_page_props),
-        {(1, "me-0001"): "ar", (1, "opp-0002"): "br", (2, "me-0001"): "se", (2, "opp-0002"): "fi"},
-    )
+    store.upsert_duel(duel)
     store.close()
 
 
 def test_stats_prints_tables():
     result = run.invoke(cli.app, ["stats", "--last", "5", "--mode", "nmpz"])
     assert result.exit_code == 0, result.output
-    assert "Brazil" in result.output and "Argentina" in result.output
-    assert "905" in result.output
+    assert "India" in result.output and "Bangladesh" in result.output
+    assert "862" in result.output
 
 
 def test_stats_rejects_bad_mode():
@@ -65,7 +61,7 @@ def test_analyze_builds_prompt_and_calls_runner(monkeypatch):
     result = run.invoke(cli.app, ["analyze", "--no-sync", "--mode", "nmpz", "--last", "5"])
     assert result.exit_code == 0, result.output
     assert captured["n"] == "analysis_nmpz_5"
-    assert "Actual: Brazil" in captured["p"]
+    assert "Actual: India" in captured["p"]
 
 
 def test_menu_dispatches_via_fzf(monkeypatch):
