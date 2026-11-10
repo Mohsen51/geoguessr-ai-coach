@@ -94,6 +94,7 @@ def test_menu_analyze_passes_plain_defaults(monkeypatch):
 
     monkeypatch.setattr("geocoach.panorama.ViewFetcher", FakeFetcher)
     monkeypatch.setattr(cli, "make_client", lambda required=True: None)
+    monkeypatch.setattr(cli, "do_sync", lambda store, last, modes: captured.update(synced=last))
     monkeypatch.setattr(
         cli.runner,
         "run_claude",
