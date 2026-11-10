@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
@@ -36,6 +37,41 @@ def parse_modes(mode: str) -> list[Mode]:
     return [Mode(mode)]
 
 
+_ranked_cache: tuple[float, dict[str, Any]] | None = None
+
+
+def ranked_snapshot(ttl_s: int = 600) -> dict[str, Any] | None:
+    """Rating per mode, division and GeoGuessr's own best/worst countries, if a cookie exists."""
+    global _ranked_cache
+    if _ranked_cache and time.monotonic() - _ranked_cache[0] < ttl_s:
+        return _ranked_cache[1]
+    from geocoach.gg_api import GeoGuessrClient
+
+    try:
+        client = GeoGuessrClient(config.get_cookie())
+    except config.MissingCookieError:
+        return None
+    try:
+        progress = client.ranked_progress(client.user_id())
+        stats = client.stats_me()
+    except Exception:
+        return None
+    finally:
+        client.close()
+    snap = {
+        "rating": progress.get("rating"),
+        "division": progress.get("divisionName"),
+        "mode_ratings": progress.get("gameModeRatings"),
+        "best_countries": progress.get("bestCountries"),
+        "worst_countries": progress.get("worstCountries"),
+        "latest_games_won": progress.get("latestGames"),
+        "guessed_first_rate": progress.get("guessedFirstRate"),
+        "per_mode_stats": {k: v for k, v in stats.items() if k.startswith("ranked")},
+    }
+    _ranked_cache = (time.monotonic(), snap)
+    return snap
+
+
 def image_paths(pano_id: str) -> list[str]:
     if not pano_id or not config.PANOS_DIR.exists():
         return []
@@ -50,8 +86,10 @@ def get_analytics(n_games: int = 10, mode: str = "all") -> dict[str, Any]:
     store = get_store()
     modes = parse_modes(mode)
     reviews = analysis.round_reviews(store, n_games, modes)
+    ranked = ranked_snapshot()
     return {
-        "source": "local",
+        "source": "local+geoguessr" if ranked else "local",
+        "geoguessr_ranked": ranked,
         "duels": len({r.game_id for r in reviews}),
         "rounds": len(reviews),
         "weak_countries": analysis.weak_countries(reviews),

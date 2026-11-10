@@ -162,13 +162,18 @@ def search(store: Store, query: str, country: str | None = None, limit: int = 8)
 
 
 def chunks_for_country(store: Store, country: str, limit: int = 20) -> list[dict]:
+    """Chunks tagged with the country, documents about that country first, then by length."""
+    country = country.lower()
     rows = store.conn.execute(
         "SELECT id, doc, page, country_tags, text FROM meta_chunks "
-        "WHERE (' ' || country_tags || ' ') LIKE ? AND text != '' "
-        "ORDER BY length(text) DESC, doc, page LIMIT ?",
-        (f"% {country.lower()} %", limit),
+        "WHERE (' ' || country_tags || ' ') LIKE ? AND text != ''",
+        (f"% {country} %",),
     ).fetchall()
-    return [dict(r) for r in rows]
+    ranked = sorted(
+        (dict(r) for r in rows),
+        key=lambda c: (country not in doc_tags(c["doc"]), -len(c["text"]), c["doc"], c["page"]),
+    )
+    return ranked[:limit]
 
 
 def pages_for_country(store: Store, country: str, limit: int = 6) -> list[tuple[str, int]]:
