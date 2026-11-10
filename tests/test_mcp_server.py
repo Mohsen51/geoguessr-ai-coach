@@ -23,9 +23,10 @@ def test_parse_modes():
     assert mcp_server.parse_modes("NMPZ") == [Mode.NMPZ]
 
 
-def test_get_analytics_local(seeded):
+def test_get_analytics_local(seeded, monkeypatch):
+    monkeypatch.setattr(mcp_server, "ranked_snapshot", lambda: None)
     out = mcp_server.get_analytics(5, "nmpz")
-    assert out["source"] == "local"
+    assert out["source"] == "local" and out["geoguessr_ranked"] is None
     assert out["duels"] == 1 and out["rounds"] == 5
     assert out["weak_countries"][0]["country"] == "in"
     assert out["rating_trend"][0]["my_rating"] == 862
@@ -78,3 +79,19 @@ def test_recommend_maps_uses_weak_countries(seeded, monkeypatch):
     monkeypatch.setattr(mcp_server.slashp, "load_maps", lambda: maps)
     assert [m["name"] for m in mcp_server.recommend_maps()] == ["A Balanced Brazil"]
     assert [m["name"] for m in mcp_server.recommend_maps(["cl"])] == ["A Balanced Chile"]
+
+
+def test_get_analytics_with_ranked_snapshot(seeded, monkeypatch):
+    snap = {"rating": 850, "mode_ratings": {"nmpzDuels": 725}, "worst_countries": ["co"]}
+    monkeypatch.setattr(mcp_server, "ranked_snapshot", lambda: snap)
+    out = mcp_server.get_analytics(5, "nmpz")
+    assert out["source"] == "local+geoguessr"
+    assert out["geoguessr_ranked"]["mode_ratings"]["nmpzDuels"] == 725
+
+
+def test_ranked_snapshot_without_cookie(monkeypatch):
+    monkeypatch.setattr(mcp_server, "_ranked_cache", None)
+    monkeypatch.delenv("GEOGUESSR_NCFA", raising=False)
+    monkeypatch.setattr(config, "_keychain_cookie", lambda: None)
+    monkeypatch.setattr(config, "ROOT", config.DATA_DIR)
+    assert mcp_server.ranked_snapshot() is None

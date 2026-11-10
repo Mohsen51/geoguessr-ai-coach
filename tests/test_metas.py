@@ -79,3 +79,20 @@ def test_render_page(metas_dir, monkeypatch, tmp_path):
     monkeypatch.setattr(metas.config, "REPORTS_DIR", tmp_path / "reports")
     out = metas.render_page("south-america.pdf", 1, metas_dir)
     assert out.exists() and out.suffix == ".png"
+
+
+def test_chunks_for_country_prefers_documents_about_the_country(tmp_path):
+    doc = pymupdf.open()
+    doc.new_page().insert_text((50, 72), "Cacti here are never seen in Colombia.", fontsize=11)
+    doc.save(tmp_path / "Brazilian Vegetation.pdf")
+    doc.close()
+    doc = pymupdf.open()
+    doc.new_page().insert_text((50, 72), "Yellow plates.", fontsize=11)
+    doc.save(tmp_path / "Colombian Plates.pdf")
+    doc.close()
+    store = Store()
+    metas.ingest(store, tmp_path)
+    assert [c["doc"] for c in metas.chunks_for_country(store, "co")] == [
+        "Colombian Plates.pdf",
+        "Brazilian Vegetation.pdf",
+    ]
