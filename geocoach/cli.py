@@ -184,7 +184,10 @@ def run_analyze(
     if not bundle.rounds:
         console.print("No lost rounds found in the selected duels.")
         raise typer.Exit(0)
-    err.print(f"[dim]reviewing {len(bundle.rounds)} rounds, asking Claude...[/dim]")
+    err.print(
+        f"[dim]reviewing {len(bundle.rounds)} rounds, asking Claude, "
+        "this usually takes one to three minutes...[/dim]"
+    )
     report = runner.run_claude(bundle.prompt, f"analysis_{mode}_{last}", model)
     err.print(f"[green]report saved to {report}[/green]")
 
@@ -256,11 +259,13 @@ def run_encyclopedia(country: str, model: str | None = None, pages: int = 6) -> 
             open_store(), country, pages,
             clue_fetch=client.country_clues if client else None,
             plonkit_client=pk,
+            log=lambda m: err.print(f"[dim]{m}[/dim]"),
         )  # fmt: skip
     finally:
         pk.close()
         if client:
             client.close()
+    err.print("[dim]asking Claude, this usually takes one to two minutes...[/dim]")
     report = runner.run_claude(prompt, f"encyclopedia_{country.lower()}", model)
     err.print(f"[green]report saved to {report}[/green]")
 

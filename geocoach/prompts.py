@@ -76,6 +76,7 @@ base knowledge: call get_plonkit(country, query) to check a clue you see in the 
 notes are a bonus on top; call get_meta_pages for a country if they look relevant. Keep it concrete.
 
 Aggregates: weakest countries: {weak or "n/a"}. Confusions: {conf or "n/a"}.
+Answer in your response only, do not write any file.
 """
     return header + "\n\n" + "\n\n".join(blocks) + "\n"
 
@@ -103,7 +104,8 @@ south etc.), and the countries it is most confused with and how to separate them
 Plonkit is the base knowledge: structure the sheet from it. My PDF notes are a bonus with
 more specific or regional detail. Mark each fact as [plonkit], [doc] (my PDF notes), [gg]
 (GeoGuessr clue cards) or [memory] (your own knowledge), and flag anything you are unsure
-about. Read the plonkit and PDF page images for the visual clues.
+about. Read the PDF page images for the visual clues. Answer in your response only, do not
+write any file.
 
 Plonkit guide:
 {plonkit or "(not synced, run: geocoach plonkit)"}
