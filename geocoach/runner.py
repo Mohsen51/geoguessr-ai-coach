@@ -29,19 +29,15 @@ def write_mcp_config(path: Path | None = None) -> Path:
     return path
 
 
-def build_command(mcp_config: Path, model: str | None = None) -> list[str]:
-    cmd = [
-        "claude",
-        "-p",
-        "--output-format",
-        "text",
-        "--mcp-config",
-        str(mcp_config),
-        "--strict-mcp-config",
+def build_command(mcp_config: Path | None, model: str | None = None) -> list[str]:
+    cmd = ["claude", "-p", "--output-format", "text"]
+    if mcp_config is not None:
+        cmd += ["--mcp-config", str(mcp_config), "--strict-mcp-config"]
+    cmd += [
         "--permission-mode",
         "dontAsk",
         "--allowedTools",
-        *ALLOWED_TOOLS,
+        *(ALLOWED_TOOLS if mcp_config is not None else ALLOWED_TOOLS[:1]),
         "--add-dir",
         str(config.DATA_DIR),
     ]
@@ -56,10 +52,11 @@ def run_claude(
     model: str | None = None,
     echo: Callable[[str], None] = lambda s: sys.stdout.write(s),
     command: list[str] | None = None,
+    use_mcp: bool = True,
 ) -> Path:
     """Stream Claude's answer to the terminal and save it under data/reports."""
     config.ensure_dirs()
-    cmd = command or build_command(write_mcp_config(), model)
+    cmd = command or build_command(write_mcp_config() if use_mcp else None, model)
     stamp = datetime.now().strftime("%Y%m%d-%H%M")
     report = config.REPORTS_DIR / f"{stamp}_{report_name}.md"
     proc = subprocess.Popen(

@@ -11,7 +11,11 @@ def _km(m: float) -> str:
 
 
 def round_block(
-    r: RoundReview, images: list[str], meta_snippets: list[str], clues: list[str] = ()
+    r: RoundReview,
+    images: list[str],
+    meta_snippets: list[str],
+    clues: list[str] = (),
+    meta_pages: list[str] = (),
 ) -> str:
     timing = f", answered in {r.time_to_guess_s:.0f}s" if r.time_to_guess_s else ""
     lines = [
@@ -34,6 +38,9 @@ def round_block(
     if clues:
         lines.append(f"- GeoGuessr clue cards for {country_name(r.country)}:")
         lines += [f"  * {c}" for c in clues]
+    if meta_pages:
+        lines.append("- Meta PDF page(s) about this country, Read if relevant:")
+        lines += [f"  - {p}" for p in meta_pages]
     return "\n".join(lines)
 
 
