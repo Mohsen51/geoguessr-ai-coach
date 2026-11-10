@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS meta_chunks (
     doc TEXT NOT NULL REFERENCES meta_docs(doc) ON DELETE CASCADE,
     page INTEGER NOT NULL,
     country_tags TEXT NOT NULL,
-    text TEXT NOT NULL
+    text TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'text'
 );
 CREATE INDEX IF NOT EXISTS idx_meta_chunks_doc_page ON meta_chunks(doc, page);
 CREATE VIRTUAL TABLE IF NOT EXISTS meta_fts USING fts5(
@@ -81,6 +82,15 @@ class Store:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(meta_chunks)")}
+        if "kind" not in cols:
+            with self.conn:
+                self.conn.execute(
+                    "ALTER TABLE meta_chunks ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'"
+                )
 
     def close(self) -> None:
         self.conn.close()

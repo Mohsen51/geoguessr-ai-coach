@@ -8,5 +8,6 @@ __pycache__/
 .ruff_cache/
 dist/
 .envrc
+.DS_Store
 metas/*
 !metas/.gitkeep

@@ -84,6 +84,7 @@ def main(ctx: typer.Context) -> None:
         "Stats": _menu_stats,
         "Sync duels": _menu_sync,
         "Ingest meta PDFs": ingest,
+        "Digest PDF images with Claude": digest,
     }
     choice = pick(list(menu), "geocoach")
     if choice:
@@ -273,6 +274,22 @@ def ingest(force: bool = typer.Option(False, "--force", help="re-index unchanged
     """Index the PDFs in metas/."""
     n = metas.ingest(open_store(), log=lambda m: err.print(f"[dim]{m}[/dim]"), force=force)
     console.print(f"{n} documents indexed")
+
+
+@app.command()
+def digest(
+    batch: int = typer.Option(8, help="page images per Claude call"),
+    doc: str | None = typer.Option(None, help="only PDFs whose name contains this"),
+    model: str | None = typer.Option(None),
+) -> None:
+    """Describe image-heavy PDF pages with Claude so maps and photos become searchable."""
+    from geocoach import digest as digest_mod
+
+    n = digest_mod.digest(
+        open_store(), batch=batch, doc_filter=doc, model=model,
+        log=lambda m: err.print(f"[dim]{m}[/dim]"),
+    )  # fmt: skip
+    console.print(f"{n} pages digested")
 
 
 if __name__ == "__main__":

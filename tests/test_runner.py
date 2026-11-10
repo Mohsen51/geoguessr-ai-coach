@@ -42,3 +42,10 @@ def test_run_claude_streams_and_saves_report():
 def test_run_claude_raises_on_failure():
     with pytest.raises(RuntimeError, match="exited with 3"):
         runner.run_claude("x", "fail", command=["sh", "-c", "echo boom >&2; exit 3"])
+
+
+def test_build_command_without_mcp(tmp_path):
+    cmd = runner.build_command(None)
+    assert "--mcp-config" not in cmd and "--strict-mcp-config" not in cmd
+    assert cmd[cmd.index("--allowedTools") + 1] == "Read"
+    assert "mcp__geocoach__*" not in cmd

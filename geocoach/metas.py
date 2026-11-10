@@ -108,11 +108,12 @@ def sha256_of(path: Path) -> str:
 
 
 def ingest(
-    store: Store, metas_dir: Path = config.METAS_DIR, log=lambda _: None, force: bool = False
+    store: Store, metas_dir: Path | None = None, log=lambda _: None, force: bool = False
 ) -> int:
     """Index new or changed PDFs (all of them with force). Returns documents (re)indexed."""
     import pymupdf
 
+    metas_dir = metas_dir or config.METAS_DIR
     done = 0
     for pdf in sorted(metas_dir.glob("*.pdf")):
         sha = sha256_of(pdf)
@@ -195,10 +196,11 @@ def pages_for_country(store: Store, country: str, limit: int = 6) -> list[tuple[
     return out
 
 
-def render_page(doc: str, page: int, metas_dir: Path = config.METAS_DIR, dpi: int = 110) -> Path:
+def render_page(doc: str, page: int, metas_dir: Path | None = None, dpi: int = 110) -> Path:
     """Render one PDF page to PNG (cached) so Claude can look at the figures."""
     import pymupdf
 
+    metas_dir = metas_dir or config.METAS_DIR
     config.ensure_dirs()
     out = config.PAGES_DIR / f"{Path(doc).stem}_p{page:03d}.png"
     if not out.exists():

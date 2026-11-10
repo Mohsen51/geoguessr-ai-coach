@@ -48,7 +48,10 @@ def prepare_analysis(
         images[(r.game_id, r.n)] = paths
         snippets = [c["text"] for c in metas.chunks_for_country(store, r.country, limit=2)]
         cards = clue_lines(clue_fetch, r.country)
-        blocks.append(prompts.round_block(r, paths, snippets, cards))
+        meta_pages = [
+            str(metas.render_page(d, p)) for d, p in metas.pages_for_country(store, r.country, 1)
+        ]
+        blocks.append(prompts.round_block(r, paths, snippets, cards, meta_pages))
     summary = {
         "weak_countries": analysis.weak_countries(reviews),
         "confusions": analysis.confusions(reviews),
