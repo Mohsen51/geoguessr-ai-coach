@@ -1,11 +1,16 @@
-"""Parse a GeoGuessr duel summary (Next.js pageProps) into plain dataclasses."""
+"""Parse a GeoGuessr duel result (game-results API) into plain dataclasses."""
 
 from __future__ import annotations
 
+import json
+import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
+
+Geocoder = Callable[[float, float], str]
 
 
 class Mode(StrEnum):
@@ -14,11 +19,19 @@ class Mode(StrEnum):
     NMPZ = "nmpz"
 
 
+MODE_NAMES = {
+    "nomovezoompan": Mode.NMPZ,
+    "nmpz": Mode.NMPZ,
+    "nomove": Mode.NM,
+    "standard": Mode.MOVING,
+    "moving": Mode.MOVING,
+}
+
+
 @dataclass(frozen=True)
 class Round:
     number: int
     pano_id: str
-    pano_hex: str
     lat: float
     lng: float
     country: str
@@ -26,10 +39,7 @@ class Round:
     pitch: float
     zoom: float
     multiplier: float
-    damage_multiplier: float
     healing: bool
-    start_ms: int | None
-    end_ms: int | None
 
 
 @dataclass(frozen=True)
@@ -41,7 +51,8 @@ class Guess:
     lng: float
     distance_m: float
     score: int
-    created_ms: int | None
+    time_spent_ms: int | None
+    country: str = ""
 
 
 @dataclass(frozen=True)
@@ -63,66 +74,67 @@ class Duel:
     won: bool | None
     my_rating: int | None
     opp_rating: int | None
-    opp_nick: str
+    opp_id: str
+    map_name: str
     rounds: list[Round] = field(default_factory=list)
     guesses: list[Guess] = field(default_factory=list)
     round_results: list[RoundResult] = field(default_factory=list)
 
 
-def decode_pano_id(hex_id: str) -> str:
-    """GeoGuessr stores Google pano ids hex-encoded; return the ASCII id."""
-    try:
-        return bytes.fromhex(hex_id).decode("ascii")
-    except ValueError:
-        return hex_id
+_HEX44 = re.compile(r"^[0-9a-fA-F]{44}$")
 
 
-def classify_mode(movement: dict[str, Any]) -> Mode:
-    moving = movement.get("forbidMoving", False)
-    zooming = movement.get("forbidZooming", False)
-    rotating = movement.get("forbidRotating", False)
-    if moving and zooming and rotating:
+def decode_pano_id(value: str) -> str:
+    """Pano ids are usually plain 22-char ids; older payloads hex-encode them."""
+    if _HEX44.match(value):
+        try:
+            return bytes.fromhex(value).decode("ascii")
+        except ValueError:
+            return value
+    return value
+
+
+def classify_mode(options: dict[str, Any]) -> Mode:
+    name = str(options.get("mode") or "").lower()
+    if name in MODE_NAMES:
+        return MODE_NAMES[name]
+    comp = str(options.get("competitiveGameMode") or "").lower()
+    if "nmpz" in comp:
         return Mode.NMPZ
-    if moving and not rotating:
+    if "nomove" in comp:
+        return Mode.NM
+    movement = options.get("movementOptions") or {}
+    if movement.get("forbidMoving") and movement.get("forbidRotating"):
+        return Mode.NMPZ
+    if movement.get("forbidMoving"):
         return Mode.NM
     return Mode.MOVING
 
 
 def to_ms(value: Any) -> int | None:
-    """Accept epoch ms, epoch seconds, or ISO 8601 strings."""
+    """Accept epoch ms, epoch seconds, or ISO 8601 strings (any fraction length)."""
     if value is None:
         return None
     if isinstance(value, int | float):
         return int(value if value > 1e11 else value * 1000)
+    text = re.sub(r"(\.\d{6})\d+", r"\1", str(value)).replace("Z", "+00:00")
     try:
-        return int(datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp() * 1000)
+        return int(datetime.fromisoformat(text).timestamp() * 1000)
     except ValueError:
         return None
 
 
-def _parse_rounds(game: dict[str, Any]) -> list[Round]:
-    rounds = []
-    for r in game.get("rounds", []):
-        p = r.get("panorama", {})
-        rounds.append(
-            Round(
-                number=int(r["roundNumber"]),
-                pano_id=decode_pano_id(p.get("panoId", "")),
-                pano_hex=p.get("panoId", ""),
-                lat=float(p["lat"]),
-                lng=float(p["lng"]),
-                country=(p.get("countryCode") or "").lower(),
-                heading=float(p.get("heading", 0)),
-                pitch=float(p.get("pitch", 0)),
-                zoom=float(p.get("zoom", 0)),
-                multiplier=float(r.get("multiplier", 1)),
-                damage_multiplier=float(r.get("damageMultiplier", 1)),
-                healing=bool(r.get("isHealingRound", False)),
-                start_ms=to_ms(r.get("startTime")),
-                end_ms=to_ms(r.get("endTime")),
-            )
-        )
-    return rounds
+def _rating(player: dict[str, Any]) -> int | None:
+    raw = player.get("progression")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+    if isinstance(raw, dict) and isinstance(raw.get("rating"), int | float):
+        return int(raw["rating"])
+    comp = player.get("competitive") or {}
+    return comp.get("rating")
 
 
 def _team_of(teams: list[dict[str, Any]], user_id: str) -> dict[str, Any]:
@@ -139,9 +151,8 @@ def _health_by_round(team: dict[str, Any]) -> dict[int, tuple[int, int]]:
     }
 
 
-def parse_duel(page_props: dict[str, Any]) -> Duel:
-    game = page_props["game"]
-    user_id = page_props["userId"]
+def parse_duel(game: dict[str, Any], user_id: str, geocoder: Geocoder | None = None) -> Duel:
+    geo = geocoder or (lambda lat, lng: "")
     teams = game["teams"]
     mine = _team_of(teams, user_id)
     others = [t for t in teams if t is not mine]
@@ -149,46 +160,63 @@ def parse_duel(page_props: dict[str, Any]) -> Duel:
     opp_player = (opp.get("players") or [{}])[0]
     my_player = next(p for p in mine["players"] if p.get("playerId") == user_id)
 
+    rounds = []
+    for i, r in enumerate(game.get("rounds", [])):
+        p = r.get("panorama") or r
+        lat, lng = float(p["lat"]), float(p["lng"])
+        rounds.append(
+            Round(
+                number=int(r.get("roundNumber", i + 1)),
+                pano_id=decode_pano_id(str(p.get("panoId") or "")),
+                lat=lat,
+                lng=lng,
+                country=(p.get("countryCode") or geo(lat, lng) or "").lower(),
+                heading=float(p.get("heading", 0)),
+                pitch=float(p.get("pitch", 0)),
+                zoom=float(p.get("zoom", 0)),
+                multiplier=float(r.get("multiplier", 1)),
+                healing=bool(r.get("isHealingRound", False)),
+            )
+        )
+
     guesses = []
     for team in teams:
         for player in team.get("players", []):
             for g in player.get("guesses", []):
+                lat, lng = float(g["lat"]), float(g["lng"])
                 guesses.append(
                     Guess(
                         round_number=int(g["roundNumber"]),
                         player_id=player.get("playerId", ""),
                         is_me=player.get("playerId") == user_id,
-                        lat=float(g["lat"]),
-                        lng=float(g["lng"]),
+                        lat=lat,
+                        lng=lng,
                         distance_m=float(g.get("distance", 0)),
                         score=int(g.get("score", 0)),
-                        created_ms=to_ms(g.get("created")),
+                        time_spent_ms=g.get("timeSpentMs"),
+                        country=(geo(lat, lng) or "").lower(),
                     )
                 )
 
     my_h, opp_h = _health_by_round(mine), _health_by_round(opp)
     results = [RoundResult(n, *my_h[n], *opp_h.get(n, (0, 0))) for n in sorted(my_h)]
-
-    result = game.get("result") or {}
     won: bool | None = None
-    if result.get("isDraw"):
-        won = None
-    elif result.get("winningTeamId") is not None:
-        won = result["winningTeamId"] == mine.get("id")
+    if results:
+        my_final, opp_final = results[-1].my_health_after, results[-1].opp_health_after
+        won = my_final > opp_final if my_final != opp_final else None
 
-    rounds = _parse_rounds(game)
     options = game.get("options", {})
-    movement = options.get("movementOptions") or game.get("movementOptions") or {}
     return Duel(
         game_id=game["gameId"],
-        played_at_ms=rounds[0].start_ms if rounds else None,
-        mode=classify_mode(movement),
+        played_at_ms=to_ms(game.get("finishedAt") or game.get("startedAt")),
+        mode=classify_mode(options),
         rated=bool(options.get("isRated", False)),
         my_team=mine.get("name", ""),
         won=won,
-        my_rating=(my_player.get("competitive") or {}).get("rating"),
-        opp_rating=(opp_player.get("competitive") or {}).get("rating"),
-        opp_nick=opp_player.get("nick", ""),
+        my_rating=_rating(my_player),
+        opp_rating=_rating(opp_player),
+        opp_id=opp_player.get("playerId", ""),
+        map_name=options.get("mapName", ""),
         rounds=rounds,
         guesses=guesses,
         round_results=results,

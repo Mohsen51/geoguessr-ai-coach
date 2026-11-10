@@ -80,8 +80,8 @@ def round_reviews(store: Store, n_games: int, modes: Iterable[Mode]) -> list[Rou
             res = results.get(r["n"])
             damage = (res["my_health_before"] - res["my_health_after"]) if res else 0
             ttg = None
-            if me["created_ms"] and r["start_ms"]:
-                ttg = round((me["created_ms"] - r["start_ms"]) / 1000, 1)
+            if me["time_spent_ms"] is not None:
+                ttg = round(me["time_spent_ms"] / 1000, 1)
             reviews.append(
                 RoundReview(
                     game_id=gid,
