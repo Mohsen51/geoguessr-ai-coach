@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS rounds (
     lat REAL, lng REAL, country TEXT,
     heading REAL, pitch REAL, zoom REAL,
     multiplier REAL, healing INTEGER,
+    region TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (game_id, n)
 );
 CREATE TABLE IF NOT EXISTS guesses (
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS guesses (
     is_me INTEGER NOT NULL,
     lat REAL, lng REAL, distance_m REAL, score INTEGER, time_spent_ms INTEGER,
     guess_country TEXT,
+    guess_region TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (game_id, n, player_id)
 );
 CREATE TABLE IF NOT EXISTS round_results (
@@ -85,12 +87,16 @@ class Store:
         self._migrate()
 
     def _migrate(self) -> None:
-        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(meta_chunks)")}
-        if "kind" not in cols:
-            with self.conn:
-                self.conn.execute(
-                    "ALTER TABLE meta_chunks ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'"
-                )
+        wanted = {
+            "meta_chunks": ("kind", "TEXT NOT NULL DEFAULT 'text'"),
+            "rounds": ("region", "TEXT NOT NULL DEFAULT ''"),
+            "guesses": ("guess_region", "TEXT NOT NULL DEFAULT ''"),
+        }
+        for table, (col, decl) in wanted.items():
+            cols = {r["name"] for r in self.conn.execute(f"PRAGMA table_info({table})")}
+            if col not in cols:
+                with self.conn:
+                    self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
     def close(self) -> None:
         self.conn.close()
@@ -120,11 +126,11 @@ class Store:
                 ),
             )
             self.conn.executemany(
-                "INSERT INTO rounds VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO rounds VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 [_round_row(duel.game_id, r) for r in duel.rounds],
             )
             self.conn.executemany(
-                "INSERT INTO guesses VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO guesses VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 [_guess_row(duel.game_id, g) for g in duel.guesses],
             )
             self.conn.executemany(
@@ -164,14 +170,14 @@ class Store:
 def _round_row(game_id: str, r: Round) -> tuple:
     return (
         game_id, r.number, r.pano_id, r.lat, r.lng, r.country,
-        r.heading, r.pitch, r.zoom, r.multiplier, int(r.healing),
+        r.heading, r.pitch, r.zoom, r.multiplier, int(r.healing), r.region,
     )  # fmt: skip
 
 
 def _guess_row(game_id: str, g: Guess) -> tuple:
     return (
         game_id, g.round_number, g.player_id, int(g.is_me), g.lat, g.lng,
-        g.distance_m, g.score, g.time_spent_ms, g.country,
+        g.distance_m, g.score, g.time_spent_ms, g.country, g.region,
     )  # fmt: skip
 
 

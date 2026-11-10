@@ -19,6 +19,7 @@ LICENSE_LINE = (
     "Text only; open the page for the pictures."
 )
 IMAGE_MD_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+REGIONAL_RE = re.compile(r"region|province|state|area|subdivision", re.I)
 
 
 def render_sheet(guide: dict) -> str:
@@ -31,7 +32,9 @@ def render_sheet(guide: dict) -> str:
         lines.append(f"Guide updated on plonkit: {updated}.")
     for note in guide.get("headerNotes") or []:
         lines += ["", f"> {note}"]
-    for step in guide.get("steps") or []:
+    steps = list(guide.get("steps") or [])
+    steps.sort(key=lambda st: not REGIONAL_RE.search(st.get("title") or ""))
+    for step in steps:
         section = step.get("title") or "Section"
         if step.get("kind") == "map":
             if step.get("text"):

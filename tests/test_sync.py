@@ -1,6 +1,6 @@
 import json
 
-from conftest import fake_geocoder
+from conftest import fake_place_geocoder
 
 from geocoach.duels import Mode
 from geocoach.store import Store
@@ -41,7 +41,7 @@ def test_sync_batches_and_stops_after_last_n(duel_game):
         }
     )
     store = Store()
-    added = sync(store, client, last_n=2, modes=[Mode.NMPZ], geocoder=fake_geocoder)
+    added = sync(store, client, last_n=2, modes=[Mode.NMPZ], geocoder=fake_place_geocoder)
     assert added == 4  # ids are batched, so the whole batch is fetched once
     assert client.batches == [["g1", "g2", "g3", "g4"]]
     assert {r["game_id"] for r in store.recent_duels(5, [Mode.NMPZ])} == {"g1", "g3", "g4"}
@@ -55,7 +55,7 @@ def test_sync_batches_and_stops_after_last_n(duel_game):
 def test_sync_skips_stored_duels(duel_game):
     games = {"g1": make_game(duel_game, "g1")}
     store = Store()
-    sync(store, FakeClient(games), 1, [Mode.NMPZ], geocoder=fake_geocoder)
+    sync(store, FakeClient(games), 1, [Mode.NMPZ], geocoder=fake_place_geocoder)
     client = FakeClient(games)
-    assert sync(store, client, 1, [Mode.NMPZ], geocoder=fake_geocoder) == 0
+    assert sync(store, client, 1, [Mode.NMPZ], geocoder=fake_place_geocoder) == 0
     assert client.batches == []

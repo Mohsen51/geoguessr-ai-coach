@@ -8,10 +8,17 @@ import pycountry
 
 
 def country_of(lat: float, lng: float) -> str:
+    return place_of(lat, lng)[0]
+
+
+def place_of(lat: float, lng: float) -> tuple[str, str]:
+    """(ISO country code, admin-1 region name) from the offline geocoder."""
     import reverse_geocoder as rg
 
     hit = rg.search((lat, lng), mode=1)
-    return (hit[0]["cc"] if hit else "").lower()
+    if not hit:
+        return "", ""
+    return hit[0]["cc"].lower(), hit[0].get("admin1") or ""
 
 
 @lru_cache(maxsize=512)

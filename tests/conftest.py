@@ -18,8 +18,16 @@ POINTS = [
 ]  # fmt: skip
 
 
+REGIONS = {"br": {(-13.9, -40.1): "Bahia", (-23.8, -48.7): "Sao Paulo", (-13.8, -40.1): "Bahia"}}
+
+
 def fake_geocoder(lat: float, lng: float) -> str:
     return min(POINTS, key=lambda p: (p[0] - lat) ** 2 + (p[1] - lng) ** 2)[2]
+
+
+def fake_place_geocoder(lat: float, lng: float) -> tuple[str, str]:
+    p = min(POINTS, key=lambda p: (p[0] - lat) ** 2 + (p[1] - lng) ** 2)
+    return p[2], REGIONS.get(p[2], {}).get((p[0], p[1]), "")
 
 
 @pytest.fixture
@@ -29,4 +37,4 @@ def duel_game() -> dict:
 
 @pytest.fixture
 def duel(duel_game):
-    return parse_duel(duel_game, "me-0001", fake_geocoder)
+    return parse_duel(duel_game, "me-0001", place_geocoder=fake_place_geocoder)

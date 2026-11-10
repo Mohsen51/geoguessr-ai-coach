@@ -6,7 +6,7 @@ import json
 from collections.abc import Callable, Iterable
 
 from geocoach.duels import Mode, parse_duel
-from geocoach.geocode import country_of
+from geocoach.geocode import place_of
 from geocoach.gg_api import GeoGuessrClient
 from geocoach.store import Store
 
@@ -17,11 +17,12 @@ def sync(
     last_n: int,
     modes: Iterable[Mode],
     max_fetch: int = 200,
-    geocoder: Callable[[float, float], str] = country_of,
+    geocoder: Callable[[float, float], tuple[str, str]] = place_of,
     log: Callable[[str], None] = lambda _: None,
 ) -> int:
     """Walk the feed until last_n rated duels in `modes` are stored. Returns new duels."""
     wanted = {m.value for m in modes}
+    backfill_regions(store, geocoder)
     user_id = client.user_id()
     matched = added = 0
     pending: list[str] = []
@@ -31,7 +32,7 @@ def sync(
         if not pending:
             return
         for game in client.duel_results(pending):
-            duel = parse_duel(game, user_id, geocoder)
+            duel = parse_duel(game, user_id, place_geocoder=geocoder)
             store.upsert_duel(duel, json.dumps(game))
             added += 1
             if duel.rated and duel.mode.value in wanted:
@@ -53,3 +54,27 @@ def sync(
             flush()
     flush()
     return added
+
+
+def backfill_regions(store: Store, geocoder: Callable[[float, float], tuple[str, str]]) -> int:
+    """Fill region columns on rows stored before regions existed. Returns rows updated."""
+    n = 0
+    with store.conn:
+        for r in store.conn.execute(
+            "SELECT game_id, n, lat, lng FROM rounds WHERE region = '' AND lat IS NOT NULL"
+        ).fetchall():
+            store.conn.execute(
+                "UPDATE rounds SET region = ? WHERE game_id = ? AND n = ?",
+                (geocoder(r["lat"], r["lng"])[1], r["game_id"], r["n"]),
+            )
+            n += 1
+        for g in store.conn.execute(
+            "SELECT game_id, n, player_id, lat, lng FROM guesses "
+            "WHERE guess_region = '' AND lat IS NOT NULL"
+        ).fetchall():
+            store.conn.execute(
+                "UPDATE guesses SET guess_region = ? WHERE game_id = ? AND n = ? AND player_id = ?",
+                (geocoder(g["lat"], g["lng"])[1], g["game_id"], g["n"], g["player_id"]),
+            )
+            n += 1
+    return n

@@ -233,6 +233,25 @@ def sections_for_country(store: Store, country: str) -> list[dict]:
     return list(out.values())
 
 
+REGIONAL_RE = re.compile(r"region|province|state|area|subdivision|north|south|east|west", re.I)
+
+
+def regional_outline(store: Store, country: str, limit: int = 30) -> list[str]:
+    """Divider titles of the regional sections, a table of contents for get_plonkit queries."""
+    rows = store.conn.execute(
+        "SELECT DISTINCT text FROM meta_chunks WHERE kind = 'plonkit' AND doc LIKE ? "
+        "AND (' ' || country_tags || ' ') LIKE ? ORDER BY page, id",
+        (DOC_PREFIX + "%", f"% {country.lower()} %"),
+    ).fetchall()
+    seen: list[str] = []
+    for r in rows:
+        head = r["text"].split("] ", 1)[0].lstrip("[")
+        section, _, divider = head.partition(" > ")
+        if divider and REGIONAL_RE.search(section) and divider not in seen:
+            seen.append(divider)
+    return seen[:limit]
+
+
 def images_for_guide(client: PlonkitClient, slug: str, guide: dict, limit: int = 12):
     """Download up to `limit` tip images, return [(caption, local path)].
 
