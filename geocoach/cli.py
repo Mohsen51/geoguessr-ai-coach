@@ -83,8 +83,8 @@ def main(ctx: typer.Context) -> None:
         "Encyclopedia": _menu_encyclopedia,
         "Stats": _menu_stats,
         "Sync duels": _menu_sync,
-        "Ingest meta PDFs": ingest,
-        "Digest PDF images with Claude": digest,
+        "Ingest meta PDFs": run_ingest,
+        "Digest PDF images with Claude": run_digest,
     }
     choice = pick(list(menu), "geocoach")
     if choice:
@@ -101,22 +101,22 @@ def _ask_last_and_mode() -> tuple[int, str]:
 
 def _menu_analyze() -> None:
     last, mode = _ask_last_and_mode()
-    analyze(last=last, mode=mode)
+    run_analyze(last, mode)
 
 
 def _menu_training() -> None:
     last, mode = _ask_last_and_mode()
-    training(last=last, mode=mode)
+    run_training(last, mode)
 
 
 def _menu_stats() -> None:
     last, mode = _ask_last_and_mode()
-    stats(last=last, mode=mode)
+    run_stats(last, mode)
 
 
 def _menu_sync() -> None:
     last, mode = _ask_last_and_mode()
-    sync_cmd(last=last, mode=mode)
+    run_sync(last, mode)
 
 
 def _menu_encyclopedia() -> None:
@@ -129,19 +129,17 @@ def _menu_encyclopedia() -> None:
     choice = pick(options, "country")
     if not choice:
         raise typer.Exit(0)
-    encyclopedia(country=choice.split()[0])
+    run_encyclopedia(choice.split()[0])
 
 
-@app.command()
-def analyze(
-    last: int = typer.Option(10, "--last", help="number of rated duels"),
-    mode: str = typer.Option("both", "--mode", help="nm, nmpz or both"),
-    max_rounds: int = typer.Option(12, help="max rounds to review"),
-    full: bool = typer.Option(False, "--full", help="three views per round"),
-    model: str | None = typer.Option(None, help="claude model override"),
-    no_sync: bool = typer.Option(False, "--no-sync", help="skip fetching new duels"),
+def run_analyze(
+    last: int = 10,
+    mode: str = "both",
+    max_rounds: int = 12,
+    full: bool = False,
+    model: str | None = None,
+    no_sync: bool = False,
 ) -> None:
-    """Review the rounds where you lost the most points with Claude."""
     from geocoach.panorama import ViewFetcher
 
     modes = modes_of(mode)
@@ -170,14 +168,25 @@ def analyze(
 
 
 @app.command()
-def training(
-    last: int = typer.Option(10, "--last"),
-    mode: str = typer.Option("both", "--mode"),
-    min_locations: int = typer.Option(5000),
-    subdivisions: bool = typer.Option(False, help="include subdivision maps"),
-    no_open: bool = typer.Option(False, "--no-open", help="do not open the chosen map"),
+def analyze(
+    last: int = typer.Option(10, "--last", help="number of rated duels"),
+    mode: str = typer.Option("both", "--mode", help="nm, nmpz or both"),
+    max_rounds: int = typer.Option(12, help="max rounds to review"),
+    full: bool = typer.Option(False, "--full", help="three views per round"),
+    model: str | None = typer.Option(None, help="claude model override"),
+    no_sync: bool = typer.Option(False, "--no-sync", help="skip fetching new duels"),
 ) -> None:
-    """Suggest slashP maps covering your weak countries."""
+    """Review the rounds where you lost the most points with Claude."""
+    run_analyze(last, mode, max_rounds, full, model, no_sync)
+
+
+def run_training(
+    last: int = 10,
+    mode: str = "both",
+    min_locations: int = 5000,
+    subdivisions: bool = False,
+    no_open: bool = False,
+) -> None:
     store = open_store()
     reviews = analysis.round_reviews(store, last, modes_of(mode))
     weak = {w["country"]: float(w["points_lost"]) for w in analysis.weak_countries(reviews)}
@@ -206,12 +215,18 @@ def training(
 
 
 @app.command()
-def encyclopedia(
-    country: str = typer.Argument(..., help="ISO code, e.g. br"),
-    model: str | None = typer.Option(None),
-    pages: int = typer.Option(6, help="max PDF pages rendered for Claude"),
+def training(
+    last: int = typer.Option(10, "--last"),
+    mode: str = typer.Option("both", "--mode"),
+    min_locations: int = typer.Option(5000),
+    subdivisions: bool = typer.Option(False, help="include subdivision maps"),
+    no_open: bool = typer.Option(False, "--no-open", help="do not open the chosen map"),
 ) -> None:
-    """Meta sheet for one country from your PDFs, GeoGuessr clue cards and Claude's knowledge."""
+    """Suggest slashP maps covering your weak countries."""
+    run_training(last, mode, min_locations, subdivisions, no_open)
+
+
+def run_encyclopedia(country: str, model: str | None = None, pages: int = 6) -> None:
     client = make_client(required=False)
     prompt = coach.prepare_encyclopedia(
         open_store(), country, pages, clue_fetch=client.country_clues if client else None
@@ -223,11 +238,16 @@ def encyclopedia(
 
 
 @app.command()
-def stats(
-    last: int = typer.Option(10, "--last"),
-    mode: str = typer.Option("both", "--mode"),
+def encyclopedia(
+    country: str = typer.Argument(..., help="ISO code, e.g. br"),
+    model: str | None = typer.Option(None),
+    pages: int = typer.Option(6, help="max PDF pages rendered for Claude"),
 ) -> None:
-    """Local tables: weak countries, confusions, timing, damage, rating."""
+    """Meta sheet for one country from your PDFs, GeoGuessr clue cards and Claude's knowledge."""
+    run_encyclopedia(country, model, pages)
+
+
+def run_stats(last: int = 10, mode: str = "both") -> None:
     store = open_store()
     modes = modes_of(mode)
     reviews = analysis.round_reviews(store, last, modes)
@@ -259,21 +279,48 @@ def stats(
     console.print(f"Rating trend (oldest to newest): {' -> '.join(ratings) or 'n/a'}")
 
 
+@app.command()
+def stats(
+    last: int = typer.Option(10, "--last"),
+    mode: str = typer.Option("both", "--mode"),
+) -> None:
+    """Local tables: weak countries, confusions, timing, damage, rating."""
+    run_stats(last, mode)
+
+
+def run_sync(last: int = 15, mode: str = "both") -> None:
+    added = do_sync(open_store(), last, modes_of(mode))
+    console.print(f"{added} new duels stored")
+
+
 @app.command("sync")
 def sync_cmd(
     last: int = typer.Option(15, "--last"),
     mode: str = typer.Option("both", "--mode"),
 ) -> None:
     """Fetch recent rated duels into the local database."""
-    added = do_sync(open_store(), last, modes_of(mode))
-    console.print(f"{added} new duels stored")
+    run_sync(last, mode)
+
+
+def run_ingest(force: bool = False) -> None:
+    n = metas.ingest(open_store(), log=lambda m: err.print(f"[dim]{m}[/dim]"), force=force)
+    console.print(f"{n} documents indexed")
 
 
 @app.command()
 def ingest(force: bool = typer.Option(False, "--force", help="re-index unchanged PDFs")) -> None:
     """Index the PDFs in metas/."""
-    n = metas.ingest(open_store(), log=lambda m: err.print(f"[dim]{m}[/dim]"), force=force)
-    console.print(f"{n} documents indexed")
+    run_ingest(force)
+
+
+def run_digest(batch: int = 8, doc: str | None = None, model: str | None = None) -> None:
+    from geocoach import digest as digest_mod
+
+    n = digest_mod.digest(
+        open_store(), batch=batch, doc_filter=doc, model=model,
+        log=lambda m: err.print(f"[dim]{m}[/dim]"),
+    )  # fmt: skip
+    console.print(f"{n} pages digested")
 
 
 @app.command()
@@ -283,13 +330,7 @@ def digest(
     model: str | None = typer.Option(None),
 ) -> None:
     """Describe image-heavy PDF pages with Claude so maps and photos become searchable."""
-    from geocoach import digest as digest_mod
-
-    n = digest_mod.digest(
-        open_store(), batch=batch, doc_filter=doc, model=model,
-        log=lambda m: err.print(f"[dim]{m}[/dim]"),
-    )  # fmt: skip
-    console.print(f"{n} pages digested")
+    run_digest(batch, doc, model)
 
 
 if __name__ == "__main__":
