@@ -9,7 +9,7 @@ run = CliRunner()
 
 @pytest.fixture(autouse=True)
 def tmp_env(tmp_path, monkeypatch, duel):
-    for name in ("DATA_DIR", "PANOS_DIR", "PAGES_DIR", "REPORTS_DIR"):
+    for name in ("DATA_DIR", "PANOS_DIR", "PAGES_DIR", "REPORTS_DIR", "SHEETS_DIR"):
         monkeypatch.setattr(config, name, tmp_path / name.lower())
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "db.sqlite")
     config.ensure_dirs()
@@ -141,3 +141,29 @@ def test_menu_survives_task_error(monkeypatch):
     monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
     result = run.invoke(cli.app, [])
     assert result.exit_code == 0 and "RuntimeError: offline" in result.output
+
+
+def test_encyclopedia_uses_saved_sheet_unless_refresh(monkeypatch):
+    calls = []
+
+    def fake_run(prompt, name, model=None):
+        calls.append(name)
+        report = config.REPORTS_DIR / "r.md"
+        report.write_text(
+            f"# x\n\nPrompt:\n\n{prompt}{cli.runner.ANSWER_SEPARATOR}# Sheet {len(calls)}\n"
+        )
+        return report
+
+    monkeypatch.setattr(cli.runner, "run_claude", fake_run)
+    monkeypatch.setattr(cli, "make_client", lambda required=True: None)
+    monkeypatch.setattr(
+        cli.plonkit,
+        "PlonkitClient",
+        lambda: type("C", (), {"close": lambda self: None, "guide_index": lambda self: []})(),
+    )
+    assert run.invoke(cli.app, ["encyclopedia", "in"]).exit_code == 0
+    assert cli.sheet_path("in").read_text().startswith("# Sheet 1")
+    result = run.invoke(cli.app, ["encyclopedia", "IN"])
+    assert result.exit_code == 0 and "Sheet 1" in result.output and len(calls) == 1
+    assert run.invoke(cli.app, ["encyclopedia", "in", "--refresh"]).exit_code == 0
+    assert len(calls) == 2 and cli.sheet_path("in").read_text().startswith("# Sheet 2")

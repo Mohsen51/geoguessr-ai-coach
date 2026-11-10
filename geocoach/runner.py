@@ -46,6 +46,15 @@ def build_command(mcp_config: Path | None, model: str | None = None) -> list[str
     return cmd
 
 
+ANSWER_SEPARATOR = "\n\n---\n\n"
+
+
+def report_answer(report: Path) -> str:
+    """Claude's answer from a saved report (the part after the prompt)."""
+    text = report.read_text()
+    return text.split(ANSWER_SEPARATOR, 1)[1] if ANSWER_SEPARATOR in text else text
+
+
 def run_claude(
     prompt: str,
     report_name: str,
@@ -73,5 +82,5 @@ def run_claude(
     err = proc.stderr.read()
     if proc.returncode != 0:
         raise RuntimeError(f"claude exited with {proc.returncode}: {err.strip()[:500]}")
-    report.write_text(f"# {report_name}\n\nPrompt:\n\n{prompt}\n\n---\n\n{''.join(chunks)}")
+    report.write_text(f"# {report_name}\n\nPrompt:\n\n{prompt}{ANSWER_SEPARATOR}{''.join(chunks)}")
     return report

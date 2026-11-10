@@ -6,9 +6,11 @@ import subprocess
 import sys
 import webbrowser
 from collections.abc import Sequence
+from datetime import datetime
 
 import typer
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.table import Table
 
 from geocoach import analysis, coach, config, metas, plonkit, runner, slashp, sync
@@ -151,7 +153,16 @@ def _menu_encyclopedia() -> None:
     choice = pick(options, "country")
     if not choice:
         raise typer.Exit(0)
-    run_encyclopedia(choice.split()[0])
+    code = choice.split()[0]
+    refresh = False
+    sheet = sheet_path(code)
+    if sheet.exists():
+        when = datetime.fromtimestamp(sheet.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        action = pick([f"Show saved sheet ({when})", "Regenerate with Claude"], code)
+        if not action:
+            raise typer.Exit(0)
+        refresh = action.startswith("Regenerate")
+    run_encyclopedia(code, refresh=refresh)
 
 
 def run_analyze(
@@ -251,7 +262,20 @@ def training(
     run_training(last, mode, min_locations, subdivisions, no_open)
 
 
-def run_encyclopedia(country: str, model: str | None = None, pages: int = 6) -> None:
+def sheet_path(country: str):
+    config.ensure_dirs()
+    return config.SHEETS_DIR / f"{country.lower()}.md"
+
+
+def run_encyclopedia(
+    country: str, model: str | None = None, pages: int = 6, refresh: bool = False
+) -> None:
+    sheet = sheet_path(country)
+    if sheet.exists() and not refresh:
+        when = datetime.fromtimestamp(sheet.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        console.print(Markdown(sheet.read_text()))
+        err.print(f"[dim]saved sheet from {when}, use --refresh to regenerate[/dim]")
+        return
     client = make_client(required=False)
     pk = plonkit.PlonkitClient()
     try:
@@ -267,7 +291,8 @@ def run_encyclopedia(country: str, model: str | None = None, pages: int = 6) -> 
             client.close()
     err.print("[dim]asking Claude, this usually takes one to two minutes...[/dim]")
     report = runner.run_claude(prompt, f"encyclopedia_{country.lower()}", model)
-    err.print(f"[green]report saved to {report}[/green]")
+    sheet.write_text(runner.report_answer(report))
+    err.print(f"[green]sheet saved to {sheet} (full report in {report.name})[/green]")
 
 
 @app.command()
@@ -275,9 +300,10 @@ def encyclopedia(
     country: str = typer.Argument(..., help="ISO code, e.g. br"),
     model: str | None = typer.Option(None),
     pages: int = typer.Option(6, help="max PDF pages rendered for Claude"),
+    refresh: bool = typer.Option(False, "--refresh", help="regenerate even if a sheet is saved"),
 ) -> None:
-    """Meta sheet for one country from your PDFs, GeoGuessr clue cards and Claude's knowledge."""
-    run_encyclopedia(country, model, pages)
+    """Meta sheet for one country: plonkit, your PDFs, clue cards and Claude. Cached per country."""
+    run_encyclopedia(country, model, pages, refresh)
 
 
 def run_stats(last: int = 10, mode: str = "both") -> None:

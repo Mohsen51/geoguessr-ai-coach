@@ -7,7 +7,7 @@ from geocoach import config, runner
 
 @pytest.fixture(autouse=True)
 def tmp_dirs(tmp_path, monkeypatch):
-    for name in ("DATA_DIR", "PANOS_DIR", "PAGES_DIR", "REPORTS_DIR"):
+    for name in ("DATA_DIR", "PANOS_DIR", "PAGES_DIR", "REPORTS_DIR", "SHEETS_DIR"):
         monkeypatch.setattr(config, name, tmp_path / name.lower())
 
 
@@ -49,3 +49,10 @@ def test_build_command_without_mcp(tmp_path):
     assert "--mcp-config" not in cmd and "--strict-mcp-config" not in cmd
     assert cmd[cmd.index("--allowedTools") + 1] == "Read"
     assert "mcp__geocoach__*" not in cmd
+
+
+def test_report_answer_extracts_text_after_prompt():
+    report = runner.run_claude(
+        "the prompt", "unit", command=["sh", "-c", "cat >/dev/null; echo answer"]
+    )
+    assert runner.report_answer(report) == "answer\n"

@@ -15,6 +15,7 @@ DB_PATH = DATA_DIR / "geocoach.db"
 PANOS_DIR = DATA_DIR / "panos"
 PAGES_DIR = DATA_DIR / "pages"
 REPORTS_DIR = DATA_DIR / "reports"
+SHEETS_DIR = DATA_DIR / "encyclopedia"
 
 KEYCHAIN_SERVICE = "geocoach"
 KEYCHAIN_ACCOUNT = "ncfa"
@@ -25,7 +26,7 @@ class MissingCookieError(RuntimeError):
 
 
 def ensure_dirs() -> None:
-    for d in (DATA_DIR, PANOS_DIR, PAGES_DIR, REPORTS_DIR):
+    for d in (DATA_DIR, PANOS_DIR, PAGES_DIR, REPORTS_DIR, SHEETS_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 
