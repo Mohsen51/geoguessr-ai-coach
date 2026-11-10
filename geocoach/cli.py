@@ -253,7 +253,7 @@ def run_encyclopedia(country: str) -> None:
     if text is None:
         console.print(
             f"No sheet for {country!r}. Sheets live in encyclopedia/ and are built from plonkit "
-            "by the weekly workflow; run `geocoach build-sheets` after `geocoach plonkit`."
+            "by the monthly workflow; run `geocoach build-sheets` after `geocoach plonkit`."
         )
         raise typer.Exit(1)
     console.print(Markdown(text))
