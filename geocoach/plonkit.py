@@ -44,6 +44,10 @@ def cache_dir() -> Path:
     return d
 
 
+class ChallengeError(RuntimeError):
+    """The response was a bot challenge page instead of the asset."""
+
+
 class PlonkitClient:
     def __init__(self, min_interval_s: float = 2.0, transport=None, retry_base_s: float = 15.0):
         self._client = httpx.Client(
@@ -103,7 +107,14 @@ class PlonkitClient:
         if out.exists():
             return out
         out.parent.mkdir(parents=True, exist_ok=True)
-        resp = self._get(image_url if image_url.startswith("/") else f"/{image_url}")
+        try:
+            resp = self._get(image_url if image_url.startswith("/") else f"/{image_url}")
+        except httpx.HTTPStatusError as exc:
+            if "text/html" in exc.response.headers.get("content-type", ""):
+                raise ChallengeError("plonkit images are behind a browser challenge") from exc
+            raise
+        if not resp.headers.get("content-type", "").startswith("image"):
+            raise ChallengeError("plonkit images are behind a browser challenge")
         out.write_bytes(resp.content)
         return out
 
@@ -223,13 +234,18 @@ def sections_for_country(store: Store, country: str) -> list[dict]:
 
 
 def images_for_guide(client: PlonkitClient, slug: str, guide: dict, limit: int = 12):
-    """Download up to `limit` tip images, return [(caption, local path)]."""
+    """Download up to `limit` tip images, return [(caption, local path)].
+
+    Stops at the first challenge page: plonkit serves images only to browsers.
+    """
     out = []
     for c in guide_chunks(guide):
         if not c.image_url or len(out) >= limit:
             continue
         try:
             out.append((chunk_text(c)[:200], client.image(c.image_url, slug)))
+        except ChallengeError:
+            break
         except httpx.HTTPError:
             continue
     return out

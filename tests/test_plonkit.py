@@ -75,10 +75,10 @@ def test_sync_indexes_guides_and_skips_unchanged():
 @respx.mock
 def test_images_for_guide_downloads_and_caches():
     respx.get("https://www.plonkit.net/images/testland/plate.png").mock(
-        return_value=httpx.Response(200, content=b"png1")
+        return_value=httpx.Response(200, content=b"png1", headers={"content-type": "image/png"})
     )
     respx.get("https://www.plonkit.net/images/testland/pole.png").mock(
-        return_value=httpx.Response(200, content=b"png2")
+        return_value=httpx.Response(200, content=b"png2", headers={"content-type": "image/png"})
     )
     client = plonkit.PlonkitClient(min_interval_s=0)
     guide = plonkit.parse_preloaded(FIXTURE)
@@ -111,3 +111,15 @@ def test_get_retries_on_429(monkeypatch):
     assert client.guide_index() == []
     assert route.call_count == 3
     assert sleeps == [7.0, 10.0]
+
+
+@respx.mock
+def test_images_stop_at_challenge_page():
+    respx.get("https://www.plonkit.net/images/testland/plate.png").mock(
+        return_value=httpx.Response(
+            403, text="<html>Just a moment...</html>", headers={"content-type": "text/html"}
+        )
+    )
+    client = plonkit.PlonkitClient(min_interval_s=0)
+    guide = plonkit.parse_preloaded(FIXTURE)
+    assert plonkit.images_for_guide(client, "testland", guide, limit=5) == []

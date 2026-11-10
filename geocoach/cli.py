@@ -9,9 +9,10 @@ from collections.abc import Sequence
 
 import typer
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.table import Table
 
-from geocoach import analysis, coach, config, metas, plonkit, runner, slashp, sync
+from geocoach import analysis, coach, config, metas, plonkit, runner, sheets, slashp, sync
 from geocoach.duels import Mode
 from geocoach.geocode import country_name
 from geocoach.store import Store
@@ -84,6 +85,7 @@ def main(ctx: typer.Context) -> None:
         "Stats": _menu_stats,
         "Sync duels": _menu_sync,
         "Sync plonkit guides": run_plonkit,
+        "Build encyclopedia sheets": run_build_sheets,
         "Ingest meta PDFs": run_ingest,
         "Digest PDF images with Claude": run_digest,
         "Quit": None,
@@ -130,26 +132,12 @@ def _menu_sync() -> None:
 
 
 def _menu_encyclopedia() -> None:
-    client = plonkit.PlonkitClient()
-    try:
-        index = [g for g in client.guide_index() if g.get("code")]
-    except Exception as exc:  # noqa: BLE001 - offline fallback to local tags
-        err.print(f"[dim]plonkit index unavailable ({exc}), using local tags[/dim]")
-        index = []
-    finally:
-        client.close()
-    if index:
-        options = sorted(f"{g['code'].lower()}  {g['title']}" for g in index)
-    else:
-        rows = (
-            open_store()
-            .conn.execute("SELECT country_tags FROM meta_chunks WHERE country_tags != ''")
-            .fetchall()
-        )
-        codes = sorted({c for r in rows for c in r["country_tags"].split()})
-        options = [f"{c}  {country_name(c)}" for c in codes] or ["(nothing indexed, type a code)"]
+    codes = sheets.available_codes()
+    options = [f"{c}  {country_name(c)}" for c in codes] or [
+        "(no sheets, run: geocoach build-sheets)"
+    ]
     choice = pick(options, "country")
-    if not choice:
+    if not choice or choice.startswith("("):
         raise typer.Exit(0)
     run_encyclopedia(choice.split()[0])
 
@@ -184,7 +172,10 @@ def run_analyze(
     if not bundle.rounds:
         console.print("No lost rounds found in the selected duels.")
         raise typer.Exit(0)
-    err.print(f"[dim]reviewing {len(bundle.rounds)} rounds, asking Claude...[/dim]")
+    err.print(
+        f"[dim]reviewing {len(bundle.rounds)} rounds, asking Claude, "
+        "this usually takes one to three minutes...[/dim]"
+    )
     report = runner.run_claude(bundle.prompt, f"analysis_{mode}_{last}", model)
     err.print(f"[green]report saved to {report}[/green]")
 
@@ -248,31 +239,32 @@ def training(
     run_training(last, mode, min_locations, subdivisions, no_open)
 
 
-def run_encyclopedia(country: str, model: str | None = None, pages: int = 6) -> None:
-    client = make_client(required=False)
-    pk = plonkit.PlonkitClient()
-    try:
-        prompt = coach.prepare_encyclopedia(
-            open_store(), country, pages,
-            clue_fetch=client.country_clues if client else None,
-            plonkit_client=pk,
-        )  # fmt: skip
-    finally:
-        pk.close()
-        if client:
-            client.close()
-    report = runner.run_claude(prompt, f"encyclopedia_{country.lower()}", model)
-    err.print(f"[green]report saved to {report}[/green]")
+def run_encyclopedia(country: str) -> None:
+    text = sheets.read_sheet(country)
+    if text is None:
+        console.print(
+            f"No sheet for {country!r}. Sheets live in encyclopedia/ and are built from plonkit "
+            "by the weekly workflow; run `geocoach build-sheets` after `geocoach plonkit`."
+        )
+        raise typer.Exit(1)
+    console.print(Markdown(text))
 
 
 @app.command()
-def encyclopedia(
-    country: str = typer.Argument(..., help="ISO code, e.g. br"),
-    model: str | None = typer.Option(None),
-    pages: int = typer.Option(6, help="max PDF pages rendered for Claude"),
-) -> None:
-    """Meta sheet for one country from your PDFs, GeoGuessr clue cards and Claude's knowledge."""
-    run_encyclopedia(country, model, pages)
+def encyclopedia(country: str = typer.Argument(..., help="ISO code, e.g. br")) -> None:
+    """Show the plonkit-based sheet for one country (encyclopedia/<cc>.md)."""
+    run_encyclopedia(country)
+
+
+def run_build_sheets() -> None:
+    written = sheets.build_all()
+    console.print(f"{len(written)} sheets in {sheets.SHEETS_DIR}")
+
+
+@app.command("build-sheets")
+def build_sheets_cmd() -> None:
+    """Render encyclopedia/<cc>.md for every cached plonkit guide."""
+    run_build_sheets()
 
 
 def run_stats(last: int = 10, mode: str = "both") -> None:

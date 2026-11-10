@@ -1,0 +1,30 @@
+# Eswatini (sz)
+
+Source: [Plonk It](https://www.plonkit.net/eswatini), licensed [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). Text only; open the page for the pictures.
+Guide updated on plonkit: 2026-10-29.
+
+## Identifying Eswatini
+
+- Eswatini’s landscape is known for its **green, wooded hills** and **tall golden grass**. NOTE: In contrast, Lesotho’s mountains are typically barren, and long grass is not a common sight there.
+- Poles in Eswatini are made of **dark brown wood** and follow a simple design. The insulators are mostly mounted on the side. NOTE: In Southern Africa, three insulators on the pole are more commonly found in Eswatini.
+- Roads starting with the letters **“MR”** are nearly exclusive to Eswatini. NOTE: They are rarely seen in [Namibia](https://maps.app.goo.gl/zdabCVnyepTrTsYn6).
+- Eswatini typically uses **yellow **outside lines and occasionally, **triple white **middle lines. NOTE: Similar road lines can also be found in South Africa, Lesotho and Botswana.
+- All of Eswatini was covered by a **white** Google car without an antenna. NOTE: Within Africa, this car can also be found in South Africa, Lesotho and Botswana.
+- Licence plates in Eswatini are **long** and **green at the bottom**. NOTE: These may look similar to certain South African plates. Make sure to refer to other clues before guessing.
+- **Concrete bus shelters** are a common sight on roads in Eswatini.
+
+## Regional clues
+
+- Montane grasslands with **long golden grass** and a mountainous landscape are typical of Western Eswatini. NOTE: Long grass can be found in almost all areas of Eswatini. This clue refers specifically to the pristine golden colour most commonly seen in the Western highlands.
+- **Pine tree plantations** are found in select areas in the West of the country. NOTE: Similar plantations can also be found in South Africa.
+- This distinct region in the central South of the country, mostly along the MR9, can be recognized by the dark, overwhelming **greenness** and **tall wooded mountains**. NOTE: If you are struggling to see why this is unique, try comparing this to other areas of the country, which are more “golden” and light-coloured.
+- You can recognise this region in the east of the country thanks to the **unusual flatness** and the mountains often visible in the distance.
+- **Sugar cane **is grown in several areas along the Eastern border.
+
+## Spotlight
+
+- The MR3 South of Ngomane can be recognized thanks to flatness, long dry grass and the **dirt on the camera**.
+- The MR3 from Manzini to the South African border is **divided** by metal and stone guardrails, making it recognisable. NOTE: This road is the only divided highway found in Eswatini.
+- The MR8 in Southeastern Eswatini straddling the South African border is recognisable because of this **distinct ridge to the east**.
+- You can recognise the **Mlawula Nature Reserve** thanks to the narrow dirt tracks, tall grass and overall savannah landscape.
+- If you see **Portuguese** text in Eswatini, you are most likely in the small town of Lomahasha. NOTE: This is because of its proximity to Mozambique, where Portuguese is spoken.
