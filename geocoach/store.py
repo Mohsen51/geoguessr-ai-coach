@@ -47,6 +47,30 @@ CREATE TABLE IF NOT EXISTS round_results (
     PRIMARY KEY (game_id, n)
 );
 CREATE INDEX IF NOT EXISTS idx_duels_mode_time ON duels(mode, played_at_ms DESC);
+CREATE TABLE IF NOT EXISTS meta_docs (
+    doc TEXT PRIMARY KEY,
+    sha256 TEXT NOT NULL,
+    pages INTEGER NOT NULL,
+    ingested_at_ms INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS meta_chunks (
+    id INTEGER PRIMARY KEY,
+    doc TEXT NOT NULL REFERENCES meta_docs(doc) ON DELETE CASCADE,
+    page INTEGER NOT NULL,
+    country_tags TEXT NOT NULL,
+    text TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_meta_chunks_doc_page ON meta_chunks(doc, page);
+CREATE VIRTUAL TABLE IF NOT EXISTS meta_fts USING fts5(
+    text, country_tags, content='meta_chunks', content_rowid='id'
+);
+CREATE TRIGGER IF NOT EXISTS meta_chunks_ai AFTER INSERT ON meta_chunks BEGIN
+    INSERT INTO meta_fts(rowid, text, country_tags) VALUES (new.id, new.text, new.country_tags);
+END;
+CREATE TRIGGER IF NOT EXISTS meta_chunks_ad AFTER DELETE ON meta_chunks BEGIN
+    INSERT INTO meta_fts(meta_fts, rowid, text, country_tags)
+    VALUES ('delete', old.id, old.text, old.country_tags);
+END;
 """
 
 
