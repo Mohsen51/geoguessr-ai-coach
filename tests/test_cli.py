@@ -64,6 +64,25 @@ def test_analyze_builds_prompt_and_calls_runner(monkeypatch):
     assert "Actual: India" in captured["p"]
 
 
+ORIGINAL_PAUSE = cli.pause
+ORIGINAL_MAKE_CLIENT = cli.make_client
+
+
+@pytest.fixture(autouse=True)
+def no_pause(monkeypatch):
+    monkeypatch.setattr(cli, "pause", lambda: None)
+    monkeypatch.setattr(cli, "make_client", lambda required=True: None)
+
+    class OfflinePlonkit:
+        def guide_index(self):
+            return []
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(cli.plonkit, "PlonkitClient", OfflinePlonkit)
+
+
 def test_menu_dispatches_via_fzf(monkeypatch):
     answers = iter(["Stats", "5", "nmpz", "Quit"])
     monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
@@ -76,6 +95,7 @@ def test_sync_without_cookie_fails_cleanly(monkeypatch):
     monkeypatch.delenv("GEOGUESSR_NCFA", raising=False)
     monkeypatch.setattr(config, "_keychain_cookie", lambda: None)
     monkeypatch.setattr(config, "ROOT", config.DATA_DIR)
+    monkeypatch.setattr(cli, "make_client", ORIGINAL_MAKE_CLIENT)
     result = run.invoke(cli.app, ["sync"])
     assert result.exit_code == 1
     assert "_ncfa" in result.output
@@ -117,9 +137,7 @@ def test_menu_training_and_ingest_use_plain_defaults(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
     assert run.invoke(cli.app, []).exit_code == 0
     monkeypatch.setattr(config, "METAS_DIR", tmp_path)
-    answers2 = iter(["Ingest meta PDFs", "Quit"])
-    monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers2))
-    result = run.invoke(cli.app, [])
+    result = run.invoke(cli.app, ["ingest"])
     assert result.exit_code == 0 and "0 documents indexed" in result.output
 
 
@@ -132,12 +150,12 @@ def test_menu_loops_until_quit(monkeypatch):
 
 
 def test_menu_survives_task_error(monkeypatch):
-    answers = iter(["Sync plonkit guides", None])
+    answers = iter(["Stats", None])
 
     def boom(*a, **k):
         raise RuntimeError("offline")
 
-    monkeypatch.setattr(cli, "run_plonkit", boom)
+    monkeypatch.setattr(cli, "_menu_stats", boom)
     monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
     result = run.invoke(cli.app, [])
     assert result.exit_code == 0 and "RuntimeError: offline" in result.output
@@ -152,3 +170,70 @@ def test_encyclopedia_shows_repo_sheet(monkeypatch, tmp_path):
     answers = iter(["Encyclopedia", "in  India", "Quit"])
     monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
     assert "Ladder poles" in run.invoke(cli.app, []).output
+
+
+def test_menu_pauses_after_each_task(monkeypatch):
+    pauses = []
+    monkeypatch.setattr(cli, "pause", lambda: pauses.append(1))
+    answers = iter(["Stats", "5", "nmpz", "Quit"])
+    monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
+    assert run.invoke(cli.app, []).exit_code == 0
+    assert pauses == [1]
+
+
+def test_pause_exits_cleanly_on_eof(monkeypatch):
+    monkeypatch.setattr(cli.console, "input", lambda *a, **k: (_ for _ in ()).throw(EOFError()))
+    with pytest.raises(cli.typer.Exit):
+        ORIGINAL_PAUSE()
+
+
+def test_menu_help_lists_every_entry(monkeypatch):
+    answers = iter(["Help", "Quit"])
+    monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
+    out = run.invoke(cli.app, []).output
+    for entry in (
+        "Analyze recent duels",
+        "Training map",
+        "Encyclopedia",
+        "Stats",
+        "Index meta PDFs",
+    ):
+        assert entry in out
+
+
+def test_menu_has_only_user_facing_entries(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        cli, "pick", lambda options, prompt: seen.setdefault("options", options) and None
+    )
+    run.invoke(cli.app, [])
+    assert seen["options"] == [
+        "Analyze recent duels", "Training map", "Encyclopedia", "Stats", "Index meta PDFs",
+        "Help", "Quit",
+    ]  # fmt: skip
+
+
+def test_stats_and_training_auto_sync(monkeypatch):
+    synced = []
+    monkeypatch.setattr(cli, "auto_sync", lambda store, last, modes: synced.append(last))
+    assert run.invoke(cli.app, ["stats", "--last", "5", "--mode", "nmpz"]).exit_code == 0
+    maps = [{"mapName": "A Balanced India", "mapId": "a" * 24, "category": "Country",
+             "locationCount": 50000, "likes": 1, "plays": 1,
+             "countryDistribution": [{"code": "IN", "count": 50000}]}]  # fmt: skip
+    monkeypatch.setattr(cli.slashp, "load_maps", lambda: maps)
+    assert run.invoke(cli.app, ["training", "--no-open", "--last", "7"]).exit_code == 0
+    assert synced == [5, 7]
+
+
+def test_auto_sync_without_cookie_is_silent():
+    cli.auto_sync(cli.open_store(), 5, [cli.Mode.NMPZ])
+
+
+def test_index_metas_runs_ingest_then_digest(monkeypatch):
+    calls = []
+    monkeypatch.setattr(cli, "run_ingest", lambda force=False: calls.append("ingest"))
+    monkeypatch.setattr(cli, "run_digest", lambda *a, **k: calls.append("digest"))
+    answers = iter(["Index meta PDFs", "Quit"])
+    monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
+    assert run.invoke(cli.app, []).exit_code == 0
+    assert calls == ["ingest", "digest"]

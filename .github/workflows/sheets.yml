@@ -30,5 +30,5 @@ jobs:
           commit-message: "chore: update encyclopedia sheets from plonkit"
           title: "chore: update encyclopedia sheets from plonkit"
           body: |
-            Weekly rebuild of `encyclopedia/` from the plonkit guides. Review the diff and merge.
+            Monthly rebuild of `encyclopedia/` from the plonkit guides. Review the diff and merge.
           delete-branch: true
