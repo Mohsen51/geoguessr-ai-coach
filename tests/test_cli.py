@@ -141,3 +141,14 @@ def test_menu_survives_task_error(monkeypatch):
     monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
     result = run.invoke(cli.app, [])
     assert result.exit_code == 0 and "RuntimeError: offline" in result.output
+
+
+def test_encyclopedia_shows_repo_sheet(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli.sheets, "SHEETS_DIR", tmp_path)
+    (tmp_path / "in.md").write_text("# India (in)\n\n## Identifying India\n\n- Ladder poles.\n")
+    result = run.invoke(cli.app, ["encyclopedia", "IN"])
+    assert result.exit_code == 0 and "Ladder poles" in result.output
+    assert run.invoke(cli.app, ["encyclopedia", "zz"]).exit_code == 1
+    answers = iter(["Encyclopedia", "in  India", "Quit"])
+    monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
+    assert "Ladder poles" in run.invoke(cli.app, []).output

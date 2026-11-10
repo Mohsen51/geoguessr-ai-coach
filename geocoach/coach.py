@@ -79,39 +79,3 @@ def clue_lines(
     if clue_fetch is None or not country:
         return []
     return clues.format_clues(clues.cached_clues(clue_fetch, country), limit)
-
-
-def prepare_encyclopedia(
-    store: Store,
-    country: str,
-    max_pages: int = 6,
-    clue_fetch: Callable[[str], list[dict]] | None = None,
-    plonkit_client: plonkit.PlonkitClient | None = None,
-    max_plonkit_images: int = 0,
-    log: Callable[[str], None] = lambda _: None,
-) -> str:
-    country = country.lower()
-    sections = plonkit.sections_for_country(store, country)
-    images: list[tuple[str, str]] = []
-    if plonkit_client is not None:
-        entry = plonkit.guide_for_country(plonkit_client.guide_index(), country)
-        if entry:
-            if not sections:
-                log(f"fetching plonkit guide for {entry['slug']}")
-                plonkit.sync(store, plonkit_client, [country])
-                sections = plonkit.sections_for_country(store, country)
-            if max_plonkit_images:
-                guide = plonkit_client.guide(entry["slug"])
-                images = [
-                    (cap, str(p))
-                    for cap, p in plonkit.images_for_guide(
-                        plonkit_client, entry["slug"], guide, max_plonkit_images
-                    )
-                ]
-    chunks = pdf_chunks(store, country, 30)
-    page_refs = metas.pages_for_country(store, country, max_pages)
-    if page_refs:
-        log(f"rendering {len(page_refs)} PDF pages")
-    pages = [str(metas.render_page(d, p)) for d, p in page_refs]
-    cards = clue_lines(clue_fetch, country, 20)
-    return prompts.encyclopedia_prompt(country, chunks, pages, cards, sections, images)

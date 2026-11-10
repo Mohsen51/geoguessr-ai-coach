@@ -64,12 +64,6 @@ def test_prepare_analysis_survives_image_failure(store):
     assert logs and "403" in logs[0]
 
 
-def test_prepare_encyclopedia_without_docs(store):
-    prompt = coach.prepare_encyclopedia(store, "BR")
-    assert "meta sheet for Brazil (br)" in prompt
-    assert prompt.count("(none)") == 4 and "not synced" in prompt
-
-
 def test_prepare_analysis_attaches_meta_page_image(store, tmp_path, monkeypatch):
     import pymupdf
 
@@ -105,17 +99,3 @@ def test_prepare_analysis_uses_plonkit_tips_first(store):
         if "Bonus notes" in bundle.prompt
         else True
     )
-
-
-def test_prepare_encyclopedia_with_plonkit_sections(store):
-    from geocoach import plonkit
-
-    guide = plonkit.parse_preloaded(
-        (
-            __import__("pathlib").Path(__file__).parent / "fixtures" / "plonkit_guide.html"
-        ).read_text()
-    )
-    plonkit.ingest_guide(store, "testland", "TL", guide)
-    prompt = coach.prepare_encyclopedia(store, "tl")
-    assert "## Identifying Testland" in prompt and "Concrete poles with holes" in prompt
-    assert prompt.index("Plonkit guide:") < prompt.index("My PDF notes (bonus):")
