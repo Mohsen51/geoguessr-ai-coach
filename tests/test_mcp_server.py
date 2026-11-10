@@ -62,7 +62,22 @@ def test_tools_registered_and_callable(seeded):
         "get_weak_spots",
         "search_metas",
         "get_meta_pages",
+        "recommend_maps",
     }
     result = asyncio.run(mcp_server.server.call_tool("get_recent_duels", {"n": 3, "mode": "nmpz"}))
     first = json.loads(result.content[0].text)
     assert first["mode"] == "nmpz" and first["rounds"] == 2
+
+
+def test_recommend_maps_uses_weak_countries(seeded, monkeypatch):
+    maps = [
+        {"mapName": "A Balanced Brazil", "mapId": "a" * 24, "category": "Country",
+         "locationCount": 50000, "likes": 1, "plays": 1,
+         "countryDistribution": [{"code": "BR", "count": 50000, "name": "Brazil"}]},
+        {"mapName": "A Balanced Chile", "mapId": "b" * 24, "category": "Country",
+         "locationCount": 50000, "likes": 1, "plays": 1,
+         "countryDistribution": [{"code": "CL", "count": 50000, "name": "Chile"}]},
+    ]  # fmt: skip
+    monkeypatch.setattr(mcp_server.slashp, "load_maps", lambda: maps)
+    assert [m["name"] for m in mcp_server.recommend_maps()] == ["A Balanced Brazil"]
+    assert [m["name"] for m in mcp_server.recommend_maps(["cl"])] == ["A Balanced Chile"]
