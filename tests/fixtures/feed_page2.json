@@ -1,0 +1,7 @@
+{
+  "entries": [
+    {"type": 6, "time": "2026-11-08T12:00:00Z", "user": {"id": "me-0001"},
+     "payload": "{\"gameId\":\"bbbbbbbb-0000-0000-0000-000000000003\",\"gameMode\":\"Duels\",\"competitiveGameMode\":\"StandardDuels\"}"}
+  ],
+  "paginationToken": null
+}
