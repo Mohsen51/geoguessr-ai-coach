@@ -7,6 +7,19 @@ from geocoach.store import Store
 run = CliRunner()
 
 
+def fake_report(captured):
+    """Stand-in for runner.run_claude that writes a minimal report file."""
+
+    def run_claude(prompt, name, model=None):
+        captured.update(p=prompt, n=name)
+        config.ensure_dirs()
+        path = config.REPORTS_DIR / "r.md"
+        path.write_text(f"# x\n\nPrompt:\n\n{prompt}{cli.runner.ANSWER_SEPARATOR}## Summary\nok\n")
+        return path
+
+    return run_claude
+
+
 @pytest.fixture(autouse=True)
 def tmp_env(tmp_path, monkeypatch, duel):
     for name in ("DATA_DIR", "PANOS_DIR", "PAGES_DIR", "REPORTS_DIR"):
@@ -51,17 +64,16 @@ def test_analyze_builds_prompt_and_calls_runner(monkeypatch):
             pass
 
     monkeypatch.setattr("geocoach.panorama.ViewFetcher", FakeFetcher)
-    monkeypatch.setattr(
-        cli.runner,
-        "run_claude",
-        lambda prompt, name, model=None: (
-            captured.update(p=prompt, n=name) or config.REPORTS_DIR / "r.md"
-        ),
-    )
+    monkeypatch.setattr(cli.runner, "run_claude", fake_report(captured))
+    opened = []
+    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
     result = run.invoke(cli.app, ["analyze", "--no-sync", "--mode", "nmpz", "--last", "5"])
     assert result.exit_code == 0, result.output
     assert captured["n"] == "analysis_nmpz_5"
     assert "Actual: India" in captured["p"]
+    assert len(opened) == 1 and opened[0].endswith(".html")
+    assert run.invoke(cli.app, ["analyze", "--no-sync", "--no-open"]).exit_code == 0
+    assert len(opened) == 1
 
 
 ORIGINAL_PAUSE = cli.pause
@@ -115,11 +127,7 @@ def test_menu_analyze_passes_plain_defaults(monkeypatch):
     monkeypatch.setattr("geocoach.panorama.ViewFetcher", FakeFetcher)
     monkeypatch.setattr(cli, "make_client", lambda required=True: None)
     monkeypatch.setattr(cli, "do_sync", lambda store, last, modes: captured.update(synced=last))
-    monkeypatch.setattr(
-        cli.runner,
-        "run_claude",
-        lambda prompt, name, model=None: captured.update(n=name) or config.REPORTS_DIR / "r.md",
-    )
+    monkeypatch.setattr(cli.runner, "run_claude", fake_report(captured))
     answers = iter(["Analyze recent duels", "5", "nmpz", "Quit"])
     monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
     result = run.invoke(cli.app, [])

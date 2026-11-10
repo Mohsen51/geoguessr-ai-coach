@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 
-from geocoach import analysis, coach, config, metas, plonkit, runner, sheets, slashp, sync
+from geocoach import analysis, coach, config, metas, plonkit, report, runner, sheets, slashp, sync
 from geocoach.duels import Mode
 from geocoach.geocode import country_name
 from geocoach.store import Store
@@ -110,8 +110,9 @@ Esc or Ctrl-C at any prompt returns to the menu or quits. Each entry has a subco
   `--focus region|country|all`, `--model opus`):
   syncs new rated duels, picks the lost rounds with the most points lost (pin losses first),
   fetches the Street View views, and asks Claude (Sonnet by default) to read them against
-  plonkit's regional clues, your PDF notes and the GeoGuessr clue cards. Report in `data/reports/`.
-  One to three minutes.
+  plonkit's regional clues, your PDF notes and the GeoGuessr clue cards. Opens an HTML report
+  with each round's view beside the explanation and Street View, pins and duel links
+  (`--no-open` to skip). One to three minutes.
 - **Training map** (`geocoach training`): ranks slashP maps by how much they cover your weak
   countries, lets you pick one and opens it. No Claude.
 - **Encyclopedia** (`geocoach encyclopedia <cc>`): shows the plonkit-based sheet from
@@ -198,6 +199,7 @@ def run_analyze(
     model: str = runner.ANALYSIS_MODEL,
     no_sync: bool = False,
     focus: str = "region",
+    open_report: bool = True,
 ) -> None:
     from geocoach.panorama import ViewFetcher
 
@@ -235,8 +237,12 @@ def run_analyze(
         f"[dim]reviewing {len(bundle.rounds)} rounds, asking Claude, "
         "this usually takes one to three minutes...[/dim]"
     )
-    report = runner.run_claude(bundle.prompt, f"analysis_{mode}_{last}", model)
-    err.print(f"[green]report saved to {report}[/green]")
+    name = f"analysis_{mode}_{last}"
+    saved = runner.run_claude(bundle.prompt, name, model)
+    page = report.write_report(bundle, runner.report_answer(saved), name)
+    err.print(f"[green]report: {page} (markdown in {saved.name})[/green]")
+    if open_report:
+        webbrowser.open(page.as_uri())
 
 
 @app.command()
@@ -248,9 +254,10 @@ def analyze(
     model: str = typer.Option(runner.ANALYSIS_MODEL, help="claude model: sonnet, opus, fable"),
     no_sync: bool = typer.Option(False, "--no-sync", help="skip fetching new duels"),
     focus: str = typer.Option("region", help="region (default), country or all"),
+    no_open: bool = typer.Option(False, "--no-open", help="do not open the HTML report"),
 ) -> None:
     """Review the rounds where you lost the most points with Claude."""
-    run_analyze(last, mode, max_rounds, full, model, no_sync, focus)
+    run_analyze(last, mode, max_rounds, full, model, no_sync, focus, not no_open)
 
 
 def run_training(

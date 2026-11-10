@@ -106,8 +106,10 @@ Read the image(s), then tell me:
 2. Why I likely guessed the region I guessed, and the single clue that should have moved the pin.
 3. Where the pin should have gone, named as a region or city, and how far that is from my pin.
 
-Then a cross-round summary: recurring confusions, whether I answer too fast or too slow, and a
-study list of at most 5 items (country or region plus the exact clue to learn). Plonkit is the
+Format: one section per round whose heading repeats the round heading below exactly
+("### Round N of duel XXXXXXXX"), then a final "## Summary" section with a cross-round summary:
+recurring confusions, whether I answer too fast or too slow, and a study list of at most 5
+items (country or region plus the exact clue to learn). Plonkit is the
 base knowledge: call get_plonkit(country, query) to check a clue you see in the image. My PDF
 notes are a bonus on top; call get_meta_pages for a country if they look relevant. Keep it concrete.
 
