@@ -43,8 +43,9 @@ def test_render_html_places_images_links_and_text(duel, tmp_path):
     page = report.render_html(bundle, ANSWER, "test report")
     assert "<title>test report</title>" in page
     assert "r5.jpg" in page and "Pin should go to Jequié" in page
-    assert "map_action=pano&pano=PANO5" in page and "geoguessr.com/duels/game-0001/summary" in page
-    assert "maps/dir/?api=1&origin=-23.77710,-48.68416&destination=-13.86174" in page
+    assert "map_action=pano&pano=PANO5" in page
+    assert "geoguessr.com/duels/game-0001/summary?round=5" in page
+    assert "map_action=pano&viewpoint=-23.77710,-48.68416" in page
     assert "Actual:</b> Brazil, Bahia" in page
     assert "No explanation returned" in page  # round 4 has none in ANSWER
     assert "Study Bahia" in page

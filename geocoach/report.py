@@ -42,13 +42,14 @@ def streetview_url(r: RoundReview) -> str:
 
 
 def duel_url(r: RoundReview) -> str:
-    return f"https://www.geoguessr.com/duels/{r.game_id}/summary"
+    return f"https://www.geoguessr.com/duels/{r.game_id}/summary?round={r.n}"
 
 
-def pins_url(r: RoundReview) -> str:
+def guess_streetview_url(r: RoundReview) -> str:
+    """Nearest Street View panorama to where I dropped the pin."""
     return (
-        "https://www.google.com/maps/dir/?api=1"
-        f"&origin={r.guess_lat:.5f},{r.guess_lng:.5f}&destination={r.lat:.5f},{r.lng:.5f}"
+        "https://www.google.com/maps/@?api=1&map_action=pano"
+        f"&viewpoint={r.guess_lat:.5f},{r.guess_lng:.5f}"
     )
 
 
@@ -127,9 +128,9 @@ def render_html(bundle: AnalysisBundle, answer: str, title: str) -> str:
         )
         links = (
             "<p class='links'>"
-            f"<a href='{streetview_url(r)}'>Street View</a>"
-            f"<a href='{pins_url(r)}'>My pin vs actual</a>"
-            f"<a href='{duel_url(r)}'>Duel on GeoGuessr</a></p>"
+            f"<a href='{streetview_url(r)}'>Street View of the round</a>"
+            f"<a href='{guess_streetview_url(r)}'>Street View where I pinned</a>"
+            f"<a href='{duel_url(r)}'>Round {r.n} on GeoGuessr</a></p>"
         )
         explain = sections.get((r.game_id, r.n)) or "<i>No explanation returned for this round.</i>"
         parts.append(
