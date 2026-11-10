@@ -131,7 +131,7 @@ def render_html(bundle: AnalysisBundle, answer: str, title: str) -> str:
             f"<a href='{pins_url(r)}'>My pin vs actual</a>"
             f"<a href='{duel_url(r)}'>Duel on GeoGuessr</a></p>"
         )
-        explain = sections.get((r.game_id, r.n), "<i>No explanation returned for this round.</i>")
+        explain = sections.get((r.game_id, r.n)) or "<i>No explanation returned for this round.</i>"
         parts.append(
             f"<h2>Round {r.n}, {html.escape(country_name(r.country))}{region} "
             f"<small>({r.mode.upper()}, duel {html.escape(r.game_id[:8])})</small></h2>"
