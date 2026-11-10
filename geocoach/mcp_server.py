@@ -1,0 +1,139 @@
+"""Read-only MCP server exposing duel analysis and meta search to Claude."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from mcp.server.mcpserver import MCPServer
+
+from geocoach import analysis, config, metas
+from geocoach.duels import Mode
+from geocoach.store import Store
+
+server = MCPServer(
+    "geocoach",
+    instructions=(
+        "Tools over the user's own GeoGuessr duel history (No Move and NMPZ) and their "
+        "community meta PDFs. All data is local and read-only."
+    ),
+)
+
+_store: Store | None = None
+
+
+def get_store() -> Store:
+    global _store
+    if _store is None:
+        config.ensure_dirs()
+        _store = Store(config.DB_PATH)
+    return _store
+
+
+def parse_modes(mode: str) -> list[Mode]:
+    mode = (mode or "all").lower()
+    if mode == "all":
+        return [Mode.NM, Mode.NMPZ]
+    return [Mode(mode)]
+
+
+def image_paths(pano_id: str) -> list[str]:
+    if not pano_id or not config.PANOS_DIR.exists():
+        return []
+    return sorted(str(p) for p in config.PANOS_DIR.glob(f"{pano_id}_*.jpg"))
+
+
+@server.tool(
+    description="Aggregated analytics over the last N rated duels: weak countries, "
+    "confusions, time buckets, damage by round, rating trend. mode: nm, nmpz or all."
+)
+def get_analytics(n_games: int = 10, mode: str = "all") -> dict[str, Any]:
+    store = get_store()
+    modes = parse_modes(mode)
+    reviews = analysis.round_reviews(store, n_games, modes)
+    return {
+        "source": "local",
+        "duels": len({r.game_id for r in reviews}),
+        "rounds": len(reviews),
+        "weak_countries": analysis.weak_countries(reviews),
+        "confusions": analysis.confusions(reviews),
+        "time_buckets": analysis.time_buckets(reviews),
+        "damage_by_round": analysis.damage_by_round(reviews),
+        "rating_trend": analysis.rating_trend(store, n_games, modes),
+    }
+
+
+@server.tool(description="Summaries of the last N rated duels (result, ratings, loss types).")
+def get_recent_duels(n: int = 10, mode: str = "all") -> list[dict[str, Any]]:
+    store = get_store()
+    reviews = analysis.round_reviews(store, n, parse_modes(mode))
+    by_game: dict[str, list] = {}
+    for r in reviews:
+        by_game.setdefault(r.game_id, []).append(r)
+    out = []
+    for duel in store.recent_duels(n, parse_modes(mode)):
+        rows = by_game.get(duel["game_id"], [])
+        out.append(
+            {
+                "game_id": duel["game_id"],
+                "played_at_ms": duel["played_at_ms"],
+                "mode": duel["mode"],
+                "won": duel["won"],
+                "my_rating": duel["my_rating"],
+                "opp_rating": duel["opp_rating"],
+                "rounds": len(rows),
+                "lost_on_country": sum(r.loss_type == "lost_on_country" for r in rows),
+                "lost_on_pin": sum(r.loss_type == "lost_on_pin" for r in rows),
+                "points_lost": sum(r.points_lost for r in rows),
+            }
+        )
+    return out
+
+
+@server.tool(
+    description="Full detail of one round: location, my guess vs opponent, timing, "
+    "damage, and paths of rendered Street View images if any."
+)
+def get_duel_round(game_id: str, round_n: int) -> dict[str, Any]:
+    store = get_store()
+    row = store.conn.execute("SELECT mode FROM duels WHERE game_id = ?", (game_id,)).fetchone()
+    if row is None:
+        return {"error": f"unknown duel {game_id}"}
+    for r in analysis.round_reviews(store, 10_000, [Mode(row["mode"])]):
+        if r.game_id == game_id and r.n == round_n:
+            d = r.as_dict()
+            d["images"] = image_paths(r.pano_id)
+            return d
+    return {"error": f"round {round_n} not found in {game_id}"}
+
+
+@server.tool(description="Worst rounds of the last N duels ranked by points lost times multiplier.")
+def get_weak_spots(n_games: int = 10, mode: str = "all", max_rounds: int = 12):
+    reviews = analysis.round_reviews(get_store(), n_games, parse_modes(mode))
+    picked = analysis.select_rounds_for_review(reviews, max_rounds)
+    return [dict(r.as_dict(), images=image_paths(r.pano_id)) for r in picked]
+
+
+@server.tool(
+    description="Full-text search in the community meta PDFs. Optional ISO country filter."
+)
+def search_metas(query: str, country: str | None = None, limit: int = 8) -> list[dict[str, Any]]:
+    return metas.search(get_store(), query, country, limit)
+
+
+@server.tool(description="Meta chunks and rendered PDF page images for one ISO country code.")
+def get_meta_pages(country: str, limit: int = 6) -> dict[str, Any]:
+    store = get_store()
+    pages = metas.pages_for_country(store, country, limit)
+    return {
+        "country": country.lower(),
+        "chunks": metas.chunks_for_country(store, country, limit=20),
+        "page_images": [str(metas.render_page(doc, page)) for doc, page in pages],
+    }
+
+
+def main() -> None:
+    server.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()
