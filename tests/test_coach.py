@@ -68,3 +68,21 @@ def test_prepare_encyclopedia_without_docs(store):
     prompt = coach.prepare_encyclopedia(store, "BR")
     assert "meta sheet for Brazil (br)" in prompt
     assert prompt.count("(none)") == 3
+
+
+def test_prepare_analysis_attaches_meta_page_image(store, tmp_path, monkeypatch):
+    import pymupdf
+
+    metas_dir = tmp_path / "metas"
+    metas_dir.mkdir()
+    doc = pymupdf.open()
+    doc.new_page().insert_text((50, 72), "Indian poles are concrete.", fontsize=11)
+    doc.save(metas_dir / "India guide.pdf")
+    doc.close()
+    from geocoach import metas
+
+    metas.ingest(store, metas_dir)
+    monkeypatch.setattr(metas.config, "METAS_DIR", metas_dir)
+    bundle = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], max_rounds=1)
+    assert "Meta PDF page(s) about this country" in bundle.prompt
+    assert "India guide_p001.png" in bundle.prompt
