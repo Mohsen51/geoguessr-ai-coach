@@ -95,3 +95,19 @@ def test_guide_for_country():
     assert plonkit.guide_for_country(index, "united-states")["code"] == "US"
     assert plonkit.guide_for_country(index, "xx") is None
     assert metas.doc_tags("plonkit:united-states") == ["us"]
+
+
+@respx.mock
+def test_get_retries_on_429(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(plonkit.time, "sleep", sleeps.append)
+    route = respx.get("https://www.plonkit.net/api/guides")
+    route.side_effect = [
+        httpx.Response(429, headers={"Retry-After": "7"}),
+        httpx.Response(429),
+        httpx.Response(200, json={"success": True, "data": []}),
+    ]
+    client = plonkit.PlonkitClient(min_interval_s=0, retry_base_s=5)
+    assert client.guide_index() == []
+    assert route.call_count == 3
+    assert sleeps == [7.0, 10.0]

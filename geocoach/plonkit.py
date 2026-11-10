@@ -45,7 +45,7 @@ def cache_dir() -> Path:
 
 
 class PlonkitClient:
-    def __init__(self, min_interval_s: float = 1.0, transport=None):
+    def __init__(self, min_interval_s: float = 2.0, transport=None, retry_base_s: float = 15.0):
         self._client = httpx.Client(
             base_url=BASE,
             headers={"User-Agent": USER_AGENT},
@@ -54,17 +54,26 @@ class PlonkitClient:
             transport=transport,
         )
         self._min_interval = min_interval_s
+        self._retry_base = retry_base_s
         self._last = 0.0
 
     def close(self) -> None:
         self._client.close()
 
     def _get(self, path: str) -> httpx.Response:
-        wait = self._min_interval - (time.monotonic() - self._last)
-        if wait > 0:
-            time.sleep(wait)
-        resp = self._client.get(path)
-        self._last = time.monotonic()
+        """Paced GET; on 429 wait (Retry-After or exponential) and retry up to 4 times."""
+        for attempt in range(5):
+            wait = self._min_interval - (time.monotonic() - self._last)
+            if wait > 0:
+                time.sleep(wait)
+            resp = self._client.get(path)
+            self._last = time.monotonic()
+            if resp.status_code != 429:
+                resp.raise_for_status()
+                return resp
+            retry_after = resp.headers.get("Retry-After")
+            delay = float(retry_after) if retry_after and retry_after.isdigit() else 0.0
+            time.sleep(max(delay, self._retry_base * 2**attempt))
         resp.raise_for_status()
         return resp
 
