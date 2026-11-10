@@ -32,9 +32,10 @@ def prepare_analysis(
     full_pano: bool = False,
     log: Callable[[str], None] = lambda _: None,
     clue_fetch: Callable[[str], list[dict]] | None = None,
+    focus: analysis.Focus = "region",
 ) -> AnalysisBundle:
     reviews = analysis.round_reviews(store, n_games, modes)
-    picked = analysis.select_rounds_for_review(reviews, max_rounds)
+    picked = analysis.select_rounds_for_review(reviews, max_rounds, focus)
     images: dict[tuple[str, int], list[str]] = {}
     blocks = []
     for r in picked:
@@ -51,14 +52,16 @@ def prepare_analysis(
         meta_pages = [
             str(metas.render_page(d, p)) for d, p in metas.pages_for_country(store, r.country, 1)
         ]
-        tips = identifying_tips(store, r.country, 5)
-        blocks.append(prompts.round_block(r, paths, snippets, cards, meta_pages, tips))
+        tips, outline = plonkit_context(store, r)
+        blocks.append(prompts.round_block(r, paths, snippets, cards, meta_pages, tips, outline))
     summary = {
         "weak_countries": analysis.weak_countries(reviews),
         "confusions": analysis.confusions(reviews),
+        "weak_regions": analysis.weak_regions(reviews),
+        "region_confusions": analysis.region_confusions(reviews),
     }
     rating = next((d["my_rating"] for d in store.recent_duels(1, modes)), None)
-    prompt = prompts.analysis_prompt(blocks, mode_label(modes), n_games, rating, summary)
+    prompt = prompts.analysis_prompt(blocks, mode_label(modes), n_games, rating, summary, focus)
     return AnalysisBundle(prompt=prompt, rounds=picked, images=images)
 
 
@@ -71,6 +74,13 @@ def pdf_chunks(store: Store, country: str, limit: int) -> list[dict]:
 def identifying_tips(store: Store, country: str, limit: int) -> list[str]:
     sections = plonkit.sections_for_country(store, country)
     return sections[0]["tips"][:limit] if sections else []
+
+
+def plonkit_context(store: Store, r: RoundReview) -> tuple[list[str], list[str]]:
+    """Identifying tips when the country was missed, the regional outline otherwise."""
+    if r.loss_type == "lost_on_pin" or r.country_hit:
+        return [], plonkit.regional_outline(store, r.country)
+    return identifying_tips(store, r.country, 5), plonkit.regional_outline(store, r.country, 12)
 
 
 def clue_lines(

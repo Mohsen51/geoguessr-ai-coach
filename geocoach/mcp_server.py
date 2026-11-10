@@ -94,6 +94,8 @@ def get_analytics(n_games: int = 10, mode: str = "all") -> dict[str, Any]:
         "rounds": len(reviews),
         "weak_countries": analysis.weak_countries(reviews),
         "confusions": analysis.confusions(reviews),
+        "weak_regions": analysis.weak_regions(reviews),
+        "region_confusions": analysis.region_confusions(reviews),
         "time_buckets": analysis.time_buckets(reviews),
         "damage_by_round": analysis.damage_by_round(reviews),
         "rating_trend": analysis.rating_trend(store, n_games, modes),
@@ -144,10 +146,15 @@ def get_duel_round(game_id: str, round_n: int) -> dict[str, Any]:
     return {"error": f"round {round_n} not found in {game_id}"}
 
 
-@server.tool(description="Worst rounds of the last N duels ranked by points lost times multiplier.")
-def get_weak_spots(n_games: int = 10, mode: str = "all", max_rounds: int = 12):
+@server.tool(
+    description="Worst rounds of the last N duels ranked by points lost times multiplier. "
+    "focus: region (pin losses first), country, or all."
+)
+def get_weak_spots(
+    n_games: int = 10, mode: str = "all", max_rounds: int = 12, focus: str = "region"
+):
     reviews = analysis.round_reviews(get_store(), n_games, parse_modes(mode))
-    picked = analysis.select_rounds_for_review(reviews, max_rounds)
+    picked = analysis.select_rounds_for_review(reviews, max_rounds, focus)  # type: ignore[arg-type]
     return [dict(r.as_dict(), images=image_paths(r.pano_id)) for r in picked]
 
 

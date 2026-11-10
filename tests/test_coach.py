@@ -30,14 +30,18 @@ def store(duel, tmp_path, monkeypatch):
 def test_prepare_analysis_builds_prompt_with_images(store):
     fetcher = FakeFetcher()
     bundle = coach.prepare_analysis(store, fetcher, 5, [Mode.NMPZ], max_rounds=5)
-    assert [r.n for r in bundle.rounds] == [1, 5, 4]
-    assert fetcher.calls[0] == ("PANO1xxxxxxxxxxxxxxxxx", 116, "nmpz", False)
+    assert [r.n for r in bundle.rounds] == [5, 1, 4]  # pin loss first with the region focus
+    assert fetcher.calls[1] == ("PANO1xxxxxxxxxxxxxxxxx", 116, "nmpz", False)
     p = bundle.prompt
-    assert "rating about 862" in p and "plays NMPZ" in p
+    assert "rating about 862" in p and "plays NMPZ" in p and "regional guessing" in p
     assert "Actual: India (in)" in p and "My guess: Bangladesh" in p
+    assert "Actual: Brazil (br), Bahia" in p and "My guess: Brazil, Sao Paulo" in p
     assert "PANO1xxxxxxxxxxxxxxxxx_y116.jpg" in p
     assert "India (3059 pts over 1 rounds)" in p
+    assert "Weakest regions (country right, pin wrong): Bahia (Brazil, 2679 pts" in p
     assert "Bangladesh at 23.861" in p and "Opponent: India at 22.709" in p
+    all_rounds = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], focus="all").rounds
+    assert [r.n for r in all_rounds] == [1, 5, 4]
 
 
 def test_prepare_analysis_includes_clue_cards(store, tmp_path):
@@ -48,10 +52,10 @@ def test_prepare_analysis_includes_clue_cards(store, tmp_path):
         return [{"type": "poles", "title": "Ladder poles", "description": "Concrete steps.",
                  "regions": [{"name": "North"}]}]  # fmt: skip
 
-    bundle = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], max_rounds=1, clue_fetch=fetch)
+    bundle = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], 1, clue_fetch=fetch, focus="all")
     assert calls == ["in"]
     assert "poles: Ladder poles. Concrete steps. (regions: North)" in bundle.prompt
-    bundle = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], max_rounds=1, clue_fetch=fetch)
+    bundle = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], 1, clue_fetch=fetch, focus="all")
     assert calls == ["in"]  # second call served from the disk cache
 
 
@@ -77,7 +81,7 @@ def test_prepare_analysis_attaches_meta_page_image(store, tmp_path, monkeypatch)
 
     metas.ingest(store, metas_dir)
     monkeypatch.setattr(metas.config, "METAS_DIR", metas_dir)
-    bundle = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], max_rounds=1)
+    bundle = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], max_rounds=1, focus="all")
     assert "Meta PDF page(s) about this country" in bundle.prompt
     assert "India guide_p001.png" in bundle.prompt
 
@@ -91,8 +95,8 @@ def test_prepare_analysis_uses_plonkit_tips_first(store):
         ).read_text()
     )
     plonkit.ingest_guide(store, "india", "IN", guide)
-    bundle = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], max_rounds=1)
-    assert "Plonkit, identifying India" in bundle.prompt
+    bundle = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], max_rounds=2)
+    assert "Plonkit, identifying India" in bundle.prompt  # round 1 missed the country
     assert "Testland uses **yellow** plates" in bundle.prompt
     assert (
         bundle.prompt.index("Plonkit, identifying") < bundle.prompt.index("Bonus notes")

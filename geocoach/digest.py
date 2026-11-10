@@ -92,7 +92,7 @@ def digest(
     metas_dir: Path | None = None,
     batch: int = 8,
     doc_filter: str | None = None,
-    model: str | None = None,
+    model: str | None = runner.DIGEST_MODEL,
     log: Callable[[str], None] = lambda _: None,
     run: Callable[..., Path] = runner.run_claude,
 ) -> int:

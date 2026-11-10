@@ -63,8 +63,24 @@ def test_time_and_damage_buckets(store):
     assert dmg[0] == {"round": 1, "rounds": 1, "avg_damage": 3059, "multiplier_rounds": 0}
 
 
-def test_select_rounds_ranks_by_points_lost(store):
+def test_select_rounds_ranks_by_points_lost_with_focus(store):
     reviews = round_reviews(store, 5, [Mode.NMPZ])
-    picked = select_rounds_for_review(reviews, max_rounds=2)
-    assert [r.n for r in picked] == [1, 5]
+    assert [r.n for r in select_rounds_for_review(reviews, 2, focus="all")] == [1, 5]
+    assert [r.n for r in select_rounds_for_review(reviews, 2)] == [5, 1]  # pin loss first
+    assert [r.n for r in select_rounds_for_review(reviews, 2, focus="country")] == [1, 4]
     assert len(select_rounds_for_review(reviews, max_rounds=9)) == 3
+
+
+def test_weak_regions_and_region_confusions(store):
+    from geocoach.analysis import region_confusions, weak_regions
+
+    reviews = round_reviews(store, 5, [Mode.NMPZ])
+    r5 = next(r for r in reviews if r.n == 5)
+    assert r5.region == "Bahia" and r5.guess_region == "Sao Paulo" and not r5.region_hit
+    assert weak_regions(reviews) == [
+        {"country": "br", "region": "Bahia", "rounds": 1, "region_hit_rate": 0.0,
+         "points_lost": 2679, "median_km": 1424}
+    ]  # fmt: skip
+    assert region_confusions(reviews) == [
+        {"country": "br", "actual": "Bahia", "guessed": "Sao Paulo", "count": 1}
+    ]

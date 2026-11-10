@@ -11,6 +11,7 @@ from enum import StrEnum
 from typing import Any
 
 Geocoder = Callable[[float, float], str]
+PlaceGeocoder = Callable[[float, float], tuple[str, str]]
 
 
 class Mode(StrEnum):
@@ -40,6 +41,7 @@ class Round:
     zoom: float
     multiplier: float
     healing: bool
+    region: str = ""
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,7 @@ class Guess:
     score: int
     time_spent_ms: int | None
     country: str = ""
+    region: str = ""
 
 
 @dataclass(frozen=True)
@@ -151,8 +154,19 @@ def _health_by_round(team: dict[str, Any]) -> dict[int, tuple[int, int]]:
     }
 
 
-def parse_duel(game: dict[str, Any], user_id: str, geocoder: Geocoder | None = None) -> Duel:
-    geo = geocoder or (lambda lat, lng: "")
+def parse_duel(
+    game: dict[str, Any],
+    user_id: str,
+    geocoder: Geocoder | None = None,
+    place_geocoder: PlaceGeocoder | None = None,
+) -> Duel:
+    """Parse one duel. place_geocoder (country, region) takes precedence over geocoder."""
+    if place_geocoder is not None:
+        place = place_geocoder
+    elif geocoder is not None:
+        place = lambda lat, lng: (geocoder(lat, lng), "")  # noqa: E731
+    else:
+        place = lambda lat, lng: ("", "")  # noqa: E731
     teams = game["teams"]
     mine = _team_of(teams, user_id)
     others = [t for t in teams if t is not mine]
@@ -164,18 +178,20 @@ def parse_duel(game: dict[str, Any], user_id: str, geocoder: Geocoder | None = N
     for i, r in enumerate(game.get("rounds", [])):
         p = r.get("panorama") or r
         lat, lng = float(p["lat"]), float(p["lng"])
+        cc, region = place(lat, lng)
         rounds.append(
             Round(
                 number=int(r.get("roundNumber", i + 1)),
                 pano_id=decode_pano_id(str(p.get("panoId") or "")),
                 lat=lat,
                 lng=lng,
-                country=(p.get("countryCode") or geo(lat, lng) or "").lower(),
+                country=(p.get("countryCode") or cc or "").lower(),
                 heading=float(p.get("heading", 0)),
                 pitch=float(p.get("pitch", 0)),
                 zoom=float(p.get("zoom", 0)),
                 multiplier=float(r.get("multiplier", 1)),
                 healing=bool(r.get("isHealingRound", False)),
+                region=region,
             )
         )
 
@@ -184,6 +200,7 @@ def parse_duel(game: dict[str, Any], user_id: str, geocoder: Geocoder | None = N
         for player in team.get("players", []):
             for g in player.get("guesses", []):
                 lat, lng = float(g["lat"]), float(g["lng"])
+                cc, region = place(lat, lng)
                 guesses.append(
                     Guess(
                         round_number=int(g["roundNumber"]),
@@ -194,7 +211,8 @@ def parse_duel(game: dict[str, Any], user_id: str, geocoder: Geocoder | None = N
                         distance_m=float(g.get("distance", 0)),
                         score=int(g.get("score", 0)),
                         time_spent_ms=g.get("timeSpentMs"),
-                        country=(geo(lat, lng) or "").lower(),
+                        country=(cc or "").lower(),
+                        region=region,
                     )
                 )
 

@@ -12,6 +12,7 @@ from geocoach.duels import Mode
 from geocoach.store import Store
 
 LossType = Literal["won", "lost_on_country", "lost_on_pin", "both_missed"]
+Focus = Literal["region", "country", "all"]
 
 
 @dataclass(frozen=True)
@@ -40,10 +41,17 @@ class RoundReview:
     guess_lng: float = 0.0
     opp_guess_lat: float = 0.0
     opp_guess_lng: float = 0.0
+    region: str = ""
+    guess_region: str = ""
+    opp_guess_region: str = ""
 
     @property
     def country_hit(self) -> bool:
         return self.guess_country == self.country
+
+    @property
+    def region_hit(self) -> bool:
+        return self.country_hit and bool(self.region) and self.guess_region == self.region
 
     @property
     def points_lost(self) -> int:
@@ -52,6 +60,7 @@ class RoundReview:
     def as_dict(self) -> dict:
         d = asdict(self)
         d["country_hit"] = self.country_hit
+        d["region_hit"] = self.region_hit
         return d
 
 
@@ -112,6 +121,9 @@ def round_reviews(store: Store, n_games: int, modes: Iterable[Mode]) -> list[Rou
                     guess_lng=me["lng"] or 0.0,
                     opp_guess_lat=(opp["lat"] if opp else 0.0) or 0.0,
                     opp_guess_lng=(opp["lng"] if opp else 0.0) or 0.0,
+                    region=r["region"] or "",
+                    guess_region=me["guess_region"] or "",
+                    opp_guess_region=(opp["guess_region"] if opp else "") or "",
                 )
             )
     return reviews
@@ -138,6 +150,39 @@ def weak_countries(reviews: list[RoundReview]) -> list[dict]:
             }
         )
     return sorted(out, key=lambda d: -d["points_lost"])
+
+
+def weak_regions(reviews: list[RoundReview]) -> list[dict]:
+    """Within countries you identify, where the pin goes wrong, by actual region."""
+    by: dict[tuple[str, str], list[RoundReview]] = defaultdict(list)
+    for rv in reviews:
+        if rv.country_hit and rv.region:
+            by[(rv.country, rv.region)].append(rv)
+    out = []
+    for (country, region), rows in by.items():
+        out.append(
+            {
+                "country": country,
+                "region": region,
+                "rounds": len(rows),
+                "region_hit_rate": round(sum(r.region_hit for r in rows) / len(rows), 2),
+                "points_lost": sum(r.points_lost for r in rows),
+                "median_km": round(median(r.distance_m for r in rows) / 1000),
+            }
+        )
+    return sorted(out, key=lambda d: (-d["points_lost"], -d["rounds"]))
+
+
+def region_confusions(reviews: list[RoundReview]) -> list[dict]:
+    pairs = Counter(
+        (r.country, r.region, r.guess_region)
+        for r in reviews
+        if r.country_hit and r.region and r.guess_region and not r.region_hit
+    )
+    return [
+        {"country": c, "actual": a, "guessed": g, "count": n}
+        for (c, a, g), n in pairs.most_common()
+    ]
 
 
 def confusions(reviews: list[RoundReview]) -> list[dict]:
@@ -188,6 +233,16 @@ def rating_trend(store: Store, n_games: int, modes: Iterable[Mode]) -> list[dict
     ]
 
 
-def select_rounds_for_review(reviews: list[RoundReview], max_rounds: int = 12):
-    lost = [r for r in reviews if r.loss_type != "won"]
-    return sorted(lost, key=lambda r: (-r.points_lost * r.multiplier, r.game_id, r.n))[:max_rounds]
+def select_rounds_for_review(
+    reviews: list[RoundReview], max_rounds: int = 12, focus: Focus = "region"
+):
+    """Worst lost rounds by points times multiplier. With focus, rounds of that kind come first."""
+    lost = sorted(
+        (r for r in reviews if r.loss_type != "won"),
+        key=lambda r: (-r.points_lost * r.multiplier, r.game_id, r.n),
+    )
+    if focus == "region":
+        lost.sort(key=lambda r: r.loss_type != "lost_on_pin")
+    elif focus == "country":
+        lost.sort(key=lambda r: r.loss_type == "lost_on_pin")
+    return lost[:max_rounds]

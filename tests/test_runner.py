@@ -44,6 +44,12 @@ def test_run_claude_raises_on_failure():
         runner.run_claude("x", "fail", command=["sh", "-c", "echo boom >&2; exit 3"])
 
 
+def test_default_models():
+    assert runner.build_command(None)[-2:] == ["--model", "sonnet"]
+    assert "--model" not in runner.build_command(None, model=None)
+    assert runner.ANALYSIS_MODEL == "sonnet" and runner.DIGEST_MODEL == "haiku"
+
+
 def test_build_command_without_mcp(tmp_path):
     cmd = runner.build_command(None)
     assert "--mcp-config" not in cmd and "--strict-mcp-config" not in cmd

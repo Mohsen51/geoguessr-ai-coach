@@ -46,9 +46,10 @@ def test_get_recent_duels_and_round(seeded):
 def test_get_weak_spots_lists_images(seeded):
     config.PANOS_DIR.mkdir(parents=True)
     (config.PANOS_DIR / "PANO1xxxxxxxxxxxxxxxxx_y116_p+00_f100_1024x768.jpg").write_bytes(b"x")
-    spots = mcp_server.get_weak_spots(5, "nmpz", max_rounds=1)
+    spots = mcp_server.get_weak_spots(5, "nmpz", max_rounds=1, focus="all")
     assert spots[0]["n"] == 1
     assert len(spots[0]["images"]) == 1
+    assert mcp_server.get_weak_spots(5, "nmpz", max_rounds=1)[0]["n"] == 5  # region focus
 
 
 def test_tools_registered_and_callable(seeded):

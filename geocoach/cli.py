@@ -147,16 +147,20 @@ def run_analyze(
     mode: str = "both",
     max_rounds: int = 12,
     full: bool = False,
-    model: str | None = None,
+    model: str = runner.ANALYSIS_MODEL,
     no_sync: bool = False,
+    focus: str = "region",
 ) -> None:
     from geocoach.panorama import ViewFetcher
 
+    if focus not in ("region", "country", "all"):
+        raise typer.BadParameter("focus must be region, country or all")
     modes = modes_of(mode)
     store = open_store()
     if not no_sync:
         do_sync(store, last, modes)
     fetcher = ViewFetcher()
+    client = make_client(required=False)
     try:
         bundle = coach.prepare_analysis(
             store,
@@ -166,9 +170,13 @@ def run_analyze(
             max_rounds,
             full,
             log=lambda m: err.print(f"[dim]{m}[/dim]"),
+            clue_fetch=client.country_clues if client else None,
+            focus=focus,  # type: ignore[arg-type]
         )
     finally:
         fetcher.close()
+        if client:
+            client.close()
     if not bundle.rounds:
         console.print("No lost rounds found in the selected duels.")
         raise typer.Exit(0)
@@ -186,11 +194,12 @@ def analyze(
     mode: str = typer.Option("both", "--mode", help="nm, nmpz or both"),
     max_rounds: int = typer.Option(12, help="max rounds to review"),
     full: bool = typer.Option(False, "--full", help="three views per round"),
-    model: str | None = typer.Option(None, help="claude model override"),
+    model: str = typer.Option(runner.ANALYSIS_MODEL, help="claude model: sonnet, opus, fable"),
     no_sync: bool = typer.Option(False, "--no-sync", help="skip fetching new duels"),
+    focus: str = typer.Option("region", help="region (default), country or all"),
 ) -> None:
     """Review the rounds where you lost the most points with Claude."""
-    run_analyze(last, mode, max_rounds, full, model, no_sync)
+    run_analyze(last, mode, max_rounds, full, model, no_sync, focus)
 
 
 def run_training(
@@ -244,7 +253,7 @@ def run_encyclopedia(country: str) -> None:
     if text is None:
         console.print(
             f"No sheet for {country!r}. Sheets live in encyclopedia/ and are built from plonkit "
-            "by the weekly workflow; run `geocoach build-sheets` after `geocoach plonkit`."
+            "by the monthly workflow; run `geocoach build-sheets` after `geocoach plonkit`."
         )
         raise typer.Exit(1)
     console.print(Markdown(text))
@@ -284,7 +293,21 @@ def run_stats(last: int = 10, mode: str = "both") -> None:
             "" if w["median_km_when_hit"] is None else str(w["median_km_when_hit"]),
         )  # fmt: skip
     console.print(t)
-    c = Table(title="Confusions")
+    wr = Table(title="Weak regions (country right, pin wrong)")
+    for col in ("country", "region", "rounds", "region hit", "pts lost", "median km"):
+        wr.add_column(col)
+    for w in analysis.weak_regions(reviews)[:15]:
+        wr.add_row(
+            country_name(w["country"]), w["region"], str(w["rounds"]),
+            f"{w['region_hit_rate']:.0%}", str(w["points_lost"]), str(w["median_km"]),
+        )  # fmt: skip
+    console.print(wr)
+    rc = Table(title="Region confusions")
+    rc.add_column("country"), rc.add_column("actual"), rc.add_column("guessed"), rc.add_column("n")
+    for row in analysis.region_confusions(reviews)[:10]:
+        rc.add_row(country_name(row["country"]), row["actual"], row["guessed"], str(row["count"]))
+    console.print(rc)
+    c = Table(title="Country confusions")
     c.add_column("actual"), c.add_column("guessed"), c.add_column("n")
     for row in analysis.confusions(reviews)[:10]:
         c.add_row(country_name(row["actual"]), country_name(row["guessed"]), str(row["count"]))
@@ -353,7 +376,7 @@ def ingest(force: bool = typer.Option(False, "--force", help="re-index unchanged
     run_ingest(force)
 
 
-def run_digest(batch: int = 8, doc: str | None = None, model: str | None = None) -> None:
+def run_digest(batch: int = 8, doc: str | None = None, model: str = runner.DIGEST_MODEL) -> None:
     from geocoach import digest as digest_mod
 
     n = digest_mod.digest(
@@ -367,7 +390,7 @@ def run_digest(batch: int = 8, doc: str | None = None, model: str | None = None)
 def digest(
     batch: int = typer.Option(8, help="page images per Claude call"),
     doc: str | None = typer.Option(None, help="only PDFs whose name contains this"),
-    model: str | None = typer.Option(None),
+    model: str = typer.Option(runner.DIGEST_MODEL, help="claude model, haiku is enough here"),
 ) -> None:
     """Describe image-heavy PDF pages with Claude so maps and photos become searchable."""
     run_digest(batch, doc, model)
