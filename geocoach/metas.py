@@ -81,7 +81,8 @@ def tag_countries(text: str) -> list[str]:
 
 def doc_tags(filename: str) -> list[str]:
     """Countries named in the file name, applied to every page of that document."""
-    return tag_countries(Path(filename).stem.replace("_", " ").replace("-", " "))
+    name = filename.split(":", 1)[1] if filename.startswith("plonkit:") else Path(filename).stem
+    return tag_countries(name.replace("_", " ").replace("-", " "))
 
 
 def chunk_text(text: str, size: int = CHUNK_CHARS) -> list[str]:
@@ -150,7 +151,7 @@ def _fts_query(text: str) -> str:
 
 def search(store: Store, query: str, country: str | None = None, limit: int = 8) -> list[dict]:
     sql = (
-        "SELECT c.id, c.doc, c.page, c.country_tags, c.text, bm25(meta_fts) AS rank "
+        "SELECT c.id, c.doc, c.page, c.country_tags, c.text, c.kind, bm25(meta_fts) AS rank "
         "FROM meta_fts JOIN meta_chunks c ON c.id = meta_fts.rowid WHERE meta_fts MATCH ?"
     )
     params: list = [_fts_query(query)]
@@ -166,7 +167,7 @@ def chunks_for_country(store: Store, country: str, limit: int = 20) -> list[dict
     """Chunks tagged with the country, documents about that country first, then by length."""
     country = country.lower()
     rows = store.conn.execute(
-        "SELECT id, doc, page, country_tags, text FROM meta_chunks "
+        "SELECT id, doc, page, country_tags, text, kind FROM meta_chunks "
         "WHERE (' ' || country_tags || ' ') LIKE ? AND text != ''",
         (f"% {country} %",),
     ).fetchall()
@@ -181,7 +182,7 @@ def pages_for_country(store: Store, country: str, limit: int = 6) -> list[tuple[
     """Pages tagged with the country, interleaved across documents, text-richest first."""
     rows = store.conn.execute(
         "SELECT doc, page, sum(length(text)) AS chars FROM meta_chunks "
-        "WHERE (' ' || country_tags || ' ') LIKE ? GROUP BY doc, page "
+        "WHERE (' ' || country_tags || ' ') LIKE ? AND kind != 'plonkit' GROUP BY doc, page "
         "ORDER BY chars DESC, doc, page",
         (f"% {country.lower()} %",),
     ).fetchall()

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from geocoach import analysis, clues, metas, prompts
+from geocoach import analysis, clues, metas, plonkit, prompts
 from geocoach.analysis import RoundReview
 from geocoach.duels import Mode
 from geocoach.panorama import PanoramaError, ViewFetcher
@@ -46,12 +46,13 @@ def prepare_analysis(
             except PanoramaError as exc:
                 log(f"round {r.n} of {r.game_id[:8]}: {exc}")
         images[(r.game_id, r.n)] = paths
-        snippets = [c["text"] for c in metas.chunks_for_country(store, r.country, limit=2)]
+        snippets = [c["text"] for c in pdf_chunks(store, r.country, 2)]
         cards = clue_lines(clue_fetch, r.country)
         meta_pages = [
             str(metas.render_page(d, p)) for d, p in metas.pages_for_country(store, r.country, 1)
         ]
-        blocks.append(prompts.round_block(r, paths, snippets, cards, meta_pages))
+        tips = identifying_tips(store, r.country, 5)
+        blocks.append(prompts.round_block(r, paths, snippets, cards, meta_pages, tips))
     summary = {
         "weak_countries": analysis.weak_countries(reviews),
         "confusions": analysis.confusions(reviews),
@@ -59,6 +60,17 @@ def prepare_analysis(
     rating = next((d["my_rating"] for d in store.recent_duels(1, modes)), None)
     prompt = prompts.analysis_prompt(blocks, mode_label(modes), n_games, rating, summary)
     return AnalysisBundle(prompt=prompt, rounds=picked, images=images)
+
+
+def pdf_chunks(store: Store, country: str, limit: int) -> list[dict]:
+    return [
+        c for c in metas.chunks_for_country(store, country, limit * 4) if c["kind"] != "plonkit"
+    ][:limit]
+
+
+def identifying_tips(store: Store, country: str, limit: int) -> list[str]:
+    sections = plonkit.sections_for_country(store, country)
+    return sections[0]["tips"][:limit] if sections else []
 
 
 def clue_lines(
@@ -74,11 +86,28 @@ def prepare_encyclopedia(
     country: str,
     max_pages: int = 6,
     clue_fetch: Callable[[str], list[dict]] | None = None,
+    plonkit_client: plonkit.PlonkitClient | None = None,
+    max_plonkit_images: int = 12,
 ) -> str:
     country = country.lower()
-    chunks = metas.chunks_for_country(store, country, limit=30)
+    sections = plonkit.sections_for_country(store, country)
+    images: list[tuple[str, str]] = []
+    if plonkit_client is not None:
+        entry = plonkit.guide_for_country(plonkit_client.guide_index(), country)
+        if entry:
+            if not sections:
+                plonkit.sync(store, plonkit_client, [country])
+                sections = plonkit.sections_for_country(store, country)
+            guide = plonkit_client.guide(entry["slug"])
+            images = [
+                (cap, str(p))
+                for cap, p in plonkit.images_for_guide(
+                    plonkit_client, entry["slug"], guide, max_plonkit_images
+                )
+            ]
+    chunks = pdf_chunks(store, country, 30)
     pages = [
         str(metas.render_page(d, p)) for d, p in metas.pages_for_country(store, country, max_pages)
     ]
     cards = clue_lines(clue_fetch, country, 20)
-    return prompts.encyclopedia_prompt(country, chunks, pages, cards)
+    return prompts.encyclopedia_prompt(country, chunks, pages, cards, sections, images)

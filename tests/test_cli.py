@@ -65,7 +65,7 @@ def test_analyze_builds_prompt_and_calls_runner(monkeypatch):
 
 
 def test_menu_dispatches_via_fzf(monkeypatch):
-    answers = iter(["Stats", "5", "nmpz"])
+    answers = iter(["Stats", "5", "nmpz", "Quit"])
     monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
     result = run.invoke(cli.app, [])
     assert result.exit_code == 0, result.output
@@ -100,7 +100,7 @@ def test_menu_analyze_passes_plain_defaults(monkeypatch):
         "run_claude",
         lambda prompt, name, model=None: captured.update(n=name) or config.REPORTS_DIR / "r.md",
     )
-    answers = iter(["Analyze recent duels", "5", "nmpz"])
+    answers = iter(["Analyze recent duels", "5", "nmpz", "Quit"])
     monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
     result = run.invoke(cli.app, [])
     assert result.exit_code == 0, result.output
@@ -113,10 +113,31 @@ def test_menu_training_and_ingest_use_plain_defaults(monkeypatch, tmp_path):
              "countryDistribution": [{"code": "IN", "count": 50000}]}]  # fmt: skip
     monkeypatch.setattr(cli.slashp, "load_maps", lambda: maps)
     monkeypatch.setattr(cli.webbrowser, "open", lambda url: None)
-    answers = iter(["Training map", "5", "nmpz", None])
+    answers = iter(["Training map", "5", "nmpz", None, "Quit"])
     monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
     assert run.invoke(cli.app, []).exit_code == 0
     monkeypatch.setattr(config, "METAS_DIR", tmp_path)
-    monkeypatch.setattr(cli, "pick", lambda options, prompt: "Ingest meta PDFs")
+    answers2 = iter(["Ingest meta PDFs", "Quit"])
+    monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers2))
     result = run.invoke(cli.app, [])
     assert result.exit_code == 0 and "0 documents indexed" in result.output
+
+
+def test_menu_loops_until_quit(monkeypatch):
+    answers = iter(["Stats", "5", "nmpz", "Stats", "5", "nmpz", "Quit"])
+    monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
+    result = run.invoke(cli.app, [])
+    assert result.exit_code == 0, result.output
+    assert result.output.count("Weak countries") == 2
+
+
+def test_menu_survives_task_error(monkeypatch):
+    answers = iter(["Sync plonkit guides", None])
+
+    def boom(*a, **k):
+        raise RuntimeError("offline")
+
+    monkeypatch.setattr(cli, "run_plonkit", boom)
+    monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
+    result = run.invoke(cli.app, [])
+    assert result.exit_code == 0 and "RuntimeError: offline" in result.output
