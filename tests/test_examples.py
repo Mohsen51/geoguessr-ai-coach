@@ -74,25 +74,40 @@ def test_own_round_examples(duel):
     store.upsert_duel(duel)
     found = examples.own_round_examples(store, "br", 2)
     assert len(found) == 1  # one Brazil round in the fixture
-    assert found[0].tip.startswith("A round I played in Brazil")
+    assert found[0].tip == "Typical road scene in Brazil, Bahia (a round I played)"
     assert "map_action=pano&pano=" in found[0].url
 
 
+def _jpeg(color: int) -> bytes:
+    from io import BytesIO
+
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", (8, 8), (color, color, color)).save(buf, "JPEG")
+    return buf.getvalue()
+
+
 @respx.mock
-def test_fetch_images_skips_failures(tmp_path):
-    respx.get(THUMB_URL).mock(
-        side_effect=lambda req: httpx.Response(
-            200 if req.url.params["panoid"] == PANO else 404,
-            content=b"img",
-            headers={"content-type": "image/jpeg"},
-        )
-    )
+def test_fetch_images_skips_failures_and_blank_thumbnails(tmp_path):
+    def reply(req):
+        pano = req.url.params["panoid"]
+        if pano == PANO:
+            return httpx.Response(200, content=_jpeg(120), headers={"content-type": "image/jpeg"})
+        if pano == "b" * 22:
+            return httpx.Response(200, content=_jpeg(0), headers={"content-type": "image/jpeg"})
+        return httpx.Response(404)
+
+    respx.get(THUMB_URL).mock(side_effect=reply)
     exs = [
         examples.Example("a", "u", PANO, 224.78, 1.0),
-        examples.Example("b", "u", "x" * 22, 0, 0),
+        examples.Example("black", "u", "b" * 22, 0, 0),
+        examples.Example("missing", "u", "x" * 22, 0, 0),
     ]
-    kept = examples.fetch_images(exs, ViewFetcher(min_interval_s=0))
+    logs = []
+    kept = examples.fetch_images(exs, ViewFetcher(min_interval_s=0), logs.append)
     assert [e.pano_id for e in kept] == [PANO]
+    assert any("blank image" in m for m in logs) and any("HTTP 404" in m for m in logs)
     assert kept[0].image.endswith(f"{PANO}_y225_p+01_f100_1024x768.jpg")
 
 
@@ -107,7 +122,7 @@ def test_verify_keeps_confirmed_examples(tmp_path):
     def fake_run(prompt, name, model=None, echo=None, use_mcp=True):
         seen["prompt"] = prompt
         echo(
-            '```json\n[{"image": "/p/a.jpg", "ok": true, "note": "pole with holes"},'
+            '```json\n[{"image": "a.jpg", "ok": true, "note": "pole with holes"},'
             ' {"image": "/p/b.jpg", "ok": false, "note": "no plate visible"}]\n```'
         )
         return tmp_path / "r.md"
