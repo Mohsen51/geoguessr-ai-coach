@@ -35,13 +35,15 @@ uv run geocoach            # fzf menu
 uv run geocoach analyze --last 10 --mode nmpz
 uv run geocoach training --last 10 --mode nm
 uv run geocoach encyclopedia br
+uv run geocoach ask "how do I tell Sabah from mainland Malaysia"
 uv run geocoach stats --last 15
 uv run geocoach sync --last 15
 ```
 
 - **Analyze**: syncs the last N rated duels, picks the rounds where you lost the most points, fetches one view (NMPZ) or two opposite views (No Move) per round, and runs Claude with the images, your guess, the opponent's guess and the matching meta notes. The report is saved under `data/reports/`.
 - **Training**: ranks slashP maps by how much of their locations fall in your weak countries.
-- **Encyclopedia**: meta sheet for a country from your PDFs plus Claude's knowledge, each fact flagged by source.
+- **Encyclopedia**: deterministic plonkit sheet per country from `encyclopedia/`, no Claude call.
+- **Ask a question**: free-text question answered by Claude from the plonkit guides of the countries you name and your PDF notes, sources cited, MCP tools available for more.
 - **Stats**: local tables, no Claude call.
 
 Everything lives in `data/` (sqlite database, cached images, rendered PDF pages, reports), which is gitignored.

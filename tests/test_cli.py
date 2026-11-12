@@ -203,6 +203,7 @@ def test_menu_help_lists_every_entry(monkeypatch):
         "Analyze recent duels",
         "Training map",
         "Encyclopedia",
+        "Ask a question",
         "Stats",
         "Index meta PDFs",
     ):
@@ -216,8 +217,8 @@ def test_menu_has_only_user_facing_entries(monkeypatch):
     )
     run.invoke(cli.app, [])
     assert seen["options"] == [
-        "Analyze recent duels", "Training map", "Encyclopedia", "Stats", "Index meta PDFs",
-        "Help", "Quit",
+        "Analyze recent duels", "Training map", "Encyclopedia", "Ask a question", "Stats",
+        "Index meta PDFs", "Help", "Quit",
     ]  # fmt: skip
 
 
@@ -265,3 +266,26 @@ def test_ask_number_returns_none_on_empty_or_eof(monkeypatch):
     assert cli.ask_number("n") is None
     monkeypatch.setattr(cli.console, "input", lambda *a, **k: (_ for _ in ()).throw(EOFError()))
     assert cli.ask_number("n") is None
+
+
+def test_ask_builds_prompt_and_calls_runner(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(cli.runner, "run_claude", fake_report(captured))
+    monkeypatch.setattr(cli.plonkit, "PlonkitClient", lambda: None)
+    result = run.invoke(cli.app, ["ask", "How do I recognise Spain?"])
+    assert result.exit_code == 0, result.output
+    assert captured["n"] == "ask"
+    assert "Question: How do I recognise Spain?" in captured["p"]
+    assert "### Spain (es)" in captured["p"]
+
+
+def test_menu_ask_reads_question_from_console(monkeypatch):
+    captured = {}
+    answers = iter(["Ask a question", "Quit"])
+    monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
+    monkeypatch.setattr(
+        cli.console, "input", lambda prompt: "Spain plates?" if "question" in prompt else ""
+    )
+    monkeypatch.setattr(cli, "run_ask", lambda q, model=None: captured.setdefault("q", q))
+    assert run.invoke(cli.app, []).exit_code == 0
+    assert captured["q"] == "Spain plates?"
