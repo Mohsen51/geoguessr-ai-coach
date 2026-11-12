@@ -65,3 +65,14 @@ def test_write_report_saves_html(duel, tmp_path, monkeypatch):
         monkeypatch.setattr(config, name, tmp_path / name.lower())
     out = report.write_report(make_bundle(duel, tmp_path), ANSWER, "analysis_nmpz_5")
     assert out.suffix == ".html" and out.read_text().startswith("<!doctype html>")
+
+
+def test_render_ask_html_lists_verified_examples():
+    from geocoach.examples import Example
+
+    ex = Example("Holey poles", "https://maps.example/x", "p" * 22, 0, 0, "/p/a.jpg", True, "seen")
+    out = report.render_ask_html("Spain poles?", "**Short answer:** holes.", [ex], "ask")
+    assert "<b>Question:</b> Spain poles?" in out
+    assert "<strong>Short answer:</strong>" in out
+    assert "file:///p/a.jpg" in out and "Open in Street View" in out and "seen" in out
+    assert "Street View examples" not in report.render_ask_html("q", "a", [], "ask")

@@ -159,3 +159,38 @@ def write_report(bundle: AnalysisBundle, answer: str, name: str) -> Path:
     out = config.REPORTS_DIR / f"{stamp}_{name}.html"
     out.write_text(render_html(bundle, answer, f"geocoach {name} {stamp}"))
     return out
+
+
+def render_ask_html(question: str, answer: str, examples: list, title: str) -> str:
+    """Answer page: the markdown answer, then the verified Street View examples."""
+    parts = [
+        f"<h1>{html.escape(title)}</h1>",
+        f"<p class='meta'><b>Question:</b> {html.escape(question)}</p>",
+        f"<div class='summary'>{_md(answer)}</div>",
+    ]
+    if examples:
+        parts.append("<h2>Street View examples</h2>")
+    for e in examples:
+        parts.append(
+            "<div class='round'><div>"
+            f"<a href='file://{html.escape(e.image)}'><img src='file://{html.escape(e.image)}' "
+            f"alt='{html.escape(e.tip[:80])}'></a></div>"
+            f"<div class='explain'><p>{html.escape(e.tip)}</p>"
+            f"<p class='meta'>{html.escape(e.note)}</p>"
+            f"<p class='links'><a href='{html.escape(e.url)}'>Open in Street View</a></p>"
+            "</div></div>"
+        )
+    body = "\n".join(parts)
+    return (
+        "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
+        f"<title>{html.escape(title)}</title><style>{CSS}</style></head>"
+        f"<body>{body}</body></html>"
+    )
+
+
+def write_ask_report(question: str, answer: str, examples: list, name: str = "ask") -> Path:
+    config.ensure_dirs()
+    stamp = datetime.now().strftime("%Y%m%d-%H%M")
+    out = config.REPORTS_DIR / f"{stamp}_{name}.html"
+    out.write_text(render_ask_html(question, answer, examples, f"geocoach {name} {stamp}"))
+    return out
