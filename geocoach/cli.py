@@ -12,7 +12,20 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 
-from geocoach import analysis, coach, config, metas, plonkit, report, runner, sheets, slashp, sync
+from geocoach import (
+    analysis,
+    coach,
+    config,
+    examples,
+    metas,
+    panorama,
+    plonkit,
+    report,
+    runner,
+    sheets,
+    slashp,
+    sync,
+)
 from geocoach.duels import Mode
 from geocoach.geocode import country_name
 from geocoach.store import Store
@@ -83,6 +96,7 @@ def main(ctx: typer.Context) -> None:
         "Training map": _menu_training,
         "Encyclopedia": _menu_encyclopedia,
         "Ask a question": _menu_ask,
+        "Ask with Street View examples": lambda: _menu_ask(enhanced=True),
         "Stats": _menu_stats,
         "Index meta PDFs": run_index_metas,
         "Help": show_help,
@@ -122,6 +136,10 @@ Esc or Ctrl-C at any prompt returns to the menu or quits. Each entry has a subco
 - **Ask a question** (`geocoach ask "how do I tell Sabah from mainland Malaysia"`): answers
   a free-text GeoGuessr question from the plonkit guides of the countries you name and your
   PDF notes, with Claude (Sonnet by default, `--model opus`). Saved under `data/reports/`.
+- **Ask with Street View examples** (`geocoach ask --enhanced "..."`): same, plus Street View
+  images of the plonkit example locations and your own rounds there, each checked by Haiku
+  before it is shown, in an HTML page (`--no-open` to skip). When no example can be verified
+  for a country you are asked whether Claude may search Street View itself, a last resort.
 - **Stats** (`geocoach stats`): weak countries and regions, region and country confusions,
   time-to-guess buckets, rating trend. Local only.
 - **Index meta PDFs** (`geocoach ingest` then `geocoach digest`): indexes new or changed PDFs
@@ -332,39 +350,74 @@ def training(
     run_training(last, mode, min_locations, subdivisions, no_open)
 
 
-def _menu_ask() -> None:
+def _menu_ask(enhanced: bool = False) -> None:
     try:
         question = console.input("Your question: ").strip()
     except (EOFError, KeyboardInterrupt):
         raise typer.Exit(0) from None
     if not question:
         raise typer.Exit(0)
-    run_ask(question)
+    run_ask(question, enhanced=enhanced)
 
 
-def run_ask(question: str, model: str = runner.ANALYSIS_MODEL) -> None:
+def confirm_search(country: str) -> bool:
+    """Last resort: let Claude look for Street View locations itself, only if the user agrees."""
+    try:
+        answer = console.input(
+            f"No plonkit example could be verified for {country}. Let Claude search Street View "
+            "itself (slower, may be wrong)? [y/N] "
+        )
+    except (EOFError, KeyboardInterrupt):
+        return False
+    return answer.strip().lower() in ("y", "yes")
+
+
+def run_ask(
+    question: str,
+    model: str = runner.ANALYSIS_MODEL,
+    enhanced: bool = False,
+    open_report: bool = True,
+) -> None:
     from geocoach import ask
 
+    log = lambda m: err.print(f"[dim]{m}[/dim]")  # noqa: E731
     store = open_store()
     try:
-        bundle = ask.prepare_question(
-            store, question, plonkit.PlonkitClient(), log=lambda m: err.print(f"[dim]{m}[/dim]")
-        )
+        bundle = ask.prepare_question(store, question, plonkit.PlonkitClient(), log=log)
+        if bundle.countries:
+            log(f"countries: {', '.join(bundle.countries)}")
+        if enhanced:
+            resolver, fetcher = examples.LinkResolver(), panorama.ViewFetcher()
+            try:
+                found = ask.gather_examples(
+                    store, bundle, question, resolver, fetcher, confirm_search, log=log
+                )
+            finally:
+                resolver.close()
+                fetcher.close()
+            bundle = bundle.with_examples(question, found)
     finally:
         store.close()
-    if bundle.countries:
-        err.print(f"[dim]countries: {', '.join(bundle.countries)}[/dim]")
-    report = runner.run_claude(bundle.prompt, "ask", model)
-    err.print(f"[dim]saved {report}[/dim]")
+    saved = runner.run_claude(bundle.prompt, "ask", model)
+    log(f"saved {saved}")
+    if enhanced:
+        page = report.write_ask_report(question, runner.report_answer(saved), bundle.examples)
+        log(f"report {page}")
+        if open_report:
+            webbrowser.open(page.as_uri())
 
 
 @app.command("ask")
 def ask_cmd(
     question: str = typer.Argument(..., help="your GeoGuessr question"),
     model: str = typer.Option(runner.ANALYSIS_MODEL, "--model", help="claude model alias"),
+    enhanced: bool = typer.Option(
+        False, "--enhanced", help="verified Street View examples and an HTML page"
+    ),
+    open_report: bool = typer.Option(True, "--open/--no-open", help="open the HTML page"),
 ) -> None:
     """Answer a GeoGuessr question from plonkit and your meta PDFs."""
-    run_ask(question, model)
+    run_ask(question, model, enhanced, open_report)
 
 
 def run_encyclopedia(country: str) -> None:

@@ -160,7 +160,7 @@ def country_knowledge_block(
     return "\n".join(lines)
 
 
-def ask_prompt(question: str, blocks: list[str], pages: list[str] = ()) -> str:
+def ask_prompt(question: str, blocks: list[str], pages: list[str] = (), examples: list = ()) -> str:
     header = f"""You are a GeoGuessr coach for a duel player (NM and NMPZ, rating about 900).
 Answer the question below from the plonkit tips and PDF notes quoted after it, which were
 pre-fetched for the countries named in the question. Call get_plonkit(country, query) or
@@ -176,5 +176,11 @@ Question: {question}
     if pages:
         header += (
             "\nPDF pages you may Read if useful:\n" + "\n".join(f"- {p}" for p in pages) + "\n"
+        )
+    if examples:
+        listed = "\n".join(f"{i}. {e.image} ({e.tip[:160]})" for i, e in enumerate(examples, 1))
+        header += (
+            "\nVerified Street View examples, Read each one and refer to it by number where the "
+            f"clue is visible:\n{listed}\n"
         )
     return header + "\n" + "\n\n".join(blocks) + "\n"

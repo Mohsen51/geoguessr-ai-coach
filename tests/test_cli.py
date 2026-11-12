@@ -204,6 +204,7 @@ def test_menu_help_lists_every_entry(monkeypatch):
         "Training map",
         "Encyclopedia",
         "Ask a question",
+        "Ask with Street View examples",
         "Stats",
         "Index meta PDFs",
     ):
@@ -217,8 +218,8 @@ def test_menu_has_only_user_facing_entries(monkeypatch):
     )
     run.invoke(cli.app, [])
     assert seen["options"] == [
-        "Analyze recent duels", "Training map", "Encyclopedia", "Ask a question", "Stats",
-        "Index meta PDFs", "Help", "Quit",
+        "Analyze recent duels", "Training map", "Encyclopedia", "Ask a question",
+        "Ask with Street View examples", "Stats", "Index meta PDFs", "Help", "Quit",
     ]  # fmt: skip
 
 
@@ -286,6 +287,39 @@ def test_menu_ask_reads_question_from_console(monkeypatch):
     monkeypatch.setattr(
         cli.console, "input", lambda prompt: "Spain plates?" if "question" in prompt else ""
     )
-    monkeypatch.setattr(cli, "run_ask", lambda q, model=None: captured.setdefault("q", q))
+    monkeypatch.setattr(cli, "run_ask", lambda q, **kw: captured.setdefault("q", q))
     assert run.invoke(cli.app, []).exit_code == 0
     assert captured["q"] == "Spain plates?"
+
+
+def test_ask_enhanced_writes_html_page(monkeypatch, tmp_path):
+    from geocoach import ask
+    from geocoach.examples import Example
+
+    captured = {}
+    monkeypatch.setattr(cli.runner, "run_claude", fake_report(captured))
+    monkeypatch.setattr(cli.plonkit, "PlonkitClient", lambda: None)
+    monkeypatch.setattr(
+        cli.examples, "LinkResolver", lambda: type("R", (), {"close": lambda s: None})()
+    )
+    monkeypatch.setattr(
+        cli.panorama, "ViewFetcher", lambda: type("F", (), {"close": lambda s: None})()
+    )
+    ex = Example("Holey poles", "u", "p" * 22, 0, 0, str(tmp_path / "i.jpg"), True, "seen")
+    monkeypatch.setattr(ask, "gather_examples", lambda *a, **k: [ex])
+    opened = []
+    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    result = run.invoke(cli.app, ["ask", "--enhanced", "Spain poles?"])
+    assert result.exit_code == 0, result.output
+    assert "Verified Street View examples" in captured["p"]
+    assert len(opened) == 1 and opened[0].endswith(".html")
+    html = next(config.REPORTS_DIR.glob("*_ask.html")).read_text()
+    assert "Holey poles" in html and "Open in Street View" in html
+    assert run.invoke(cli.app, ["ask", "--enhanced", "--no-open", "Spain poles?"]).exit_code == 0
+
+
+def test_confirm_search_defaults_to_no(monkeypatch):
+    monkeypatch.setattr(cli.console, "input", lambda prompt: "")
+    assert cli.confirm_search("Spain") is False
+    monkeypatch.setattr(cli.console, "input", lambda prompt: "y")
+    assert cli.confirm_search("Spain") is True

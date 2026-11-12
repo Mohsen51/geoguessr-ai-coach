@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
+from PIL import Image, ImageStat
 
 from geocoach import config, runner
 from geocoach.geocode import country_name
@@ -126,7 +127,8 @@ def own_round_examples(store: Store, country: str, limit: int = 4) -> list[Examp
     name = country_name(country) or country
     return [
         Example(
-            f"A round I played in {name}{', ' + r['region'] if r['region'] else ''}",
+            f"Typical road scene in {name}{', ' + r['region'] if r['region'] else ''} "
+            "(a round I played)",
             f"https://www.google.com/maps/@?api=1&map_action=pano&pano={r['pano_id']}"
             f"&heading={r['heading']:.0f}&pitch={r['pitch']:.0f}",
             r["pano_id"],
@@ -137,24 +139,35 @@ def own_round_examples(store: Store, country: str, limit: int = 4) -> list[Examp
     ]
 
 
+def is_blank(path: str | Path, threshold: float = 8.0) -> bool:
+    """True for the all-black thumbnails Google returns for unavailable panoramas."""
+    with Image.open(path) as im:
+        return max(ImageStat.Stat(im.convert("L")).mean) < threshold
+
+
 def fetch_images(
     examples: list[Example], fetcher: ViewFetcher, log: Callable[[str], None] = lambda _: None
 ) -> list[Example]:
     kept = []
     for ex in examples:
         try:
-            ex.image = str(
-                fetcher.fetch_view(ex.pano_id, round(ex.heading) % 360, round(ex.pitch), FOV)
-            )
-            kept.append(ex)
+            path = fetcher.fetch_view(ex.pano_id, round(ex.heading) % 360, round(ex.pitch), FOV)
         except PanoramaError as exc:
             log(f"example skipped: {exc}")
+            continue
+        if is_blank(path):
+            log(f"example skipped: blank image for {ex.pano_id}")
+            continue
+        ex.image = str(path)
+        kept.append(ex)
     return kept
 
 
 VERIFY_PROMPT = """You check Street View images for a GeoGuessr study page. For each image below,
 Read it and decide whether the claim is visible in the picture (the clue itself, not just the
 country). Be strict: a claim about a pole, sign, plate or vegetation must be clearly visible.
+A claim of a "typical road scene" in a country passes when the picture is a clear outdoor road
+view consistent with that country, since it is meant as general context, not a specific clue.
 
 Answer with JSON only, no prose and no code fence: a list of objects with keys "image" (the
 path exactly as given), "ok" (true or false) and "note" (one short sentence on what is seen).
@@ -192,8 +205,11 @@ def verify(
     collected: list[str] = []
     run(prompt, "verify_examples", model, echo=collected.append, use_mcp=False)
     verdicts = parse_verification("".join(collected))
+    by_name = {Path(k).name: v for k, v in verdicts.items()}
     for e in with_images:
-        e.verified, e.note = verdicts.get(e.image, (False, "no verdict"))
+        e.verified, e.note = verdicts.get(e.image) or by_name.get(
+            Path(e.image).name, (False, "no verdict")
+        )
     return [e for e in with_images if e.verified]
 
 
