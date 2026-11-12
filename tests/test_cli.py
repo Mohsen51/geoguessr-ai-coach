@@ -204,7 +204,6 @@ def test_menu_help_lists_every_entry(monkeypatch):
         "Training map",
         "Encyclopedia",
         "Ask a question",
-        "Ask with Street View examples",
         "Stats",
         "Index meta PDFs",
     ):
@@ -218,8 +217,8 @@ def test_menu_has_only_user_facing_entries(monkeypatch):
     )
     run.invoke(cli.app, [])
     assert seen["options"] == [
-        "Analyze recent duels", "Training map", "Encyclopedia", "Ask a question",
-        "Ask with Street View examples", "Stats", "Index meta PDFs", "Help", "Quit",
+        "Analyze recent duels", "Training map", "Encyclopedia", "Ask a question", "Stats",
+        "Index meta PDFs", "Help", "Quit",
     ]  # fmt: skip
 
 
@@ -282,14 +281,14 @@ def test_ask_builds_prompt_and_calls_runner(monkeypatch):
 
 def test_menu_ask_reads_question_from_console(monkeypatch):
     captured = {}
-    answers = iter(["Ask a question", "Quit"])
+    answers = iter(["Ask a question", "With Street View examples (slower)", "Quit"])
     monkeypatch.setattr(cli, "pick", lambda options, prompt: next(answers))
     monkeypatch.setattr(
         cli.console, "input", lambda prompt: "Spain plates?" if "question" in prompt else ""
     )
-    monkeypatch.setattr(cli, "run_ask", lambda q, **kw: captured.setdefault("q", q))
+    monkeypatch.setattr(cli, "run_ask", lambda q, **kw: captured.update(q=q, **kw))
     assert run.invoke(cli.app, []).exit_code == 0
-    assert captured["q"] == "Spain plates?"
+    assert captured == {"q": "Spain plates?", "enhanced": True}
 
 
 def test_ask_enhanced_writes_html_page(monkeypatch, tmp_path):

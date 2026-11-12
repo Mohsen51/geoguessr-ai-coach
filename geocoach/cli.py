@@ -96,7 +96,6 @@ def main(ctx: typer.Context) -> None:
         "Training map": _menu_training,
         "Encyclopedia": _menu_encyclopedia,
         "Ask a question": _menu_ask,
-        "Ask with Street View examples": lambda: _menu_ask(enhanced=True),
         "Stats": _menu_stats,
         "Index meta PDFs": run_index_metas,
         "Help": show_help,
@@ -136,10 +135,10 @@ Esc or Ctrl-C at any prompt returns to the menu or quits. Each entry has a subco
 - **Ask a question** (`geocoach ask "how do I tell Sabah from mainland Malaysia"`): answers
   a free-text GeoGuessr question from the plonkit guides of the countries you name and your
   PDF notes, with Claude (Sonnet by default, `--model opus`). Saved under `data/reports/`.
-- **Ask with Street View examples** (`geocoach ask --enhanced "..."`): same, plus Street View
-  images of the plonkit example locations and your own rounds there, each checked by Haiku
-  before it is shown, in an HTML page (`--no-open` to skip). When no example can be verified
-  for a country you are asked whether Claude may search Street View itself, a last resort.
+  Pick "With Street View examples" (`--enhanced`) to add images of the plonkit example
+  locations and your own rounds there, each checked by Haiku before it is shown, in an HTML
+  page (`--no-open` to skip). When no example can be verified for a country you are asked
+  whether Claude may search Street View itself, a last resort.
 - **Stats** (`geocoach stats`): weak countries and regions, region and country confusions,
   time-to-guess buckets, rating trend. Local only.
 - **Index meta PDFs** (`geocoach ingest` then `geocoach digest`): indexes new or changed PDFs
@@ -350,14 +349,20 @@ def training(
     run_training(last, mode, min_locations, subdivisions, no_open)
 
 
-def _menu_ask(enhanced: bool = False) -> None:
+ASK_MODES = {"Text only": False, "With Street View examples (slower)": True}
+
+
+def _menu_ask() -> None:
     try:
         question = console.input("Your question: ").strip()
     except (EOFError, KeyboardInterrupt):
         raise typer.Exit(0) from None
     if not question:
         raise typer.Exit(0)
-    run_ask(question, enhanced=enhanced)
+    choice = pick(list(ASK_MODES), "answer")
+    if not choice:
+        raise typer.Exit(0)
+    run_ask(question, enhanced=ASK_MODES[choice])
 
 
 def confirm_search(country: str) -> bool:
