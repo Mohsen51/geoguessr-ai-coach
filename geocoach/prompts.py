@@ -126,3 +126,55 @@ Region confusions: {region_conf or "n/a"}.
 Answer in your response only, do not write any file.
 """
     return header + "\n\n" + "\n\n".join(blocks) + "\n"
+
+
+def hits_block(title: str, hits: list[dict]) -> str:
+    lines = [f"### {title}"]
+    lines += [f"- [{h['doc']} p{h['page']}] {h['text'].strip()[:500]}" for h in hits]
+    return "\n".join(lines) if hits else f"### {title}\n- nothing indexed matches"
+
+
+def country_knowledge_block(
+    code: str,
+    identifying: list[str],
+    matched: list[str],
+    regional: list[str],
+    notes: list[str],
+) -> str:
+    name = country_name(code) or code
+    lines = [f"### {name} ({code})"]
+    if identifying:
+        lines.append("- Plonkit, identifying the country:")
+        lines += [f"  * {t[:500]}" for t in identifying]
+    if matched:
+        lines.append("- Plonkit tips matching the question:")
+        lines += [f"  * {t[:500]}" for t in matched]
+    if regional:
+        lines.append("- Plonkit regional clues:")
+        lines += [f"  * {t[:500]}" for t in regional]
+    if notes:
+        lines.append("- Notes from my community PDFs:")
+        lines += [f"  > {n.strip()[:600]}" for n in notes]
+    if len(lines) == 1:
+        lines.append(f"- No plonkit guide indexed for {name}, call get_plonkit('{code}').")
+    return "\n".join(lines)
+
+
+def ask_prompt(question: str, blocks: list[str], pages: list[str] = ()) -> str:
+    header = f"""You are a GeoGuessr coach for a duel player (NM and NMPZ, rating about 900).
+Answer the question below from the plonkit tips and PDF notes quoted after it, which were
+pre-fetched for the countries named in the question. Call get_plonkit(country, query) or
+search_metas(query) for anything the quotes do not cover, and get_meta_pages(country) when my
+PDF notes look relevant. Say when a claim comes from your own knowledge rather than from the
+sources, and cite the source section inline. Prefer clues visible in NM and NMPZ (no moving).
+Keep it concrete: a short answer, then a checklist of the clues to look for, most reliable
+first, and the confusions to avoid. End with one line naming the sources and tools you used.
+Answer in your response only, do not write any file.
+
+Question: {question}
+"""
+    if pages:
+        header += (
+            "\nPDF pages you may Read if useful:\n" + "\n".join(f"- {p}" for p in pages) + "\n"
+        )
+    return header + "\n" + "\n\n".join(blocks) + "\n"

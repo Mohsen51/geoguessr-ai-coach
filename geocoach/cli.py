@@ -82,6 +82,7 @@ def main(ctx: typer.Context) -> None:
         "Analyze recent duels": _menu_analyze,
         "Training map": _menu_training,
         "Encyclopedia": _menu_encyclopedia,
+        "Ask a question": _menu_ask,
         "Stats": _menu_stats,
         "Index meta PDFs": run_index_metas,
         "Help": show_help,
@@ -118,6 +119,9 @@ Esc or Ctrl-C at any prompt returns to the menu or quits. Each entry has a subco
   countries, lets you pick one and opens it. No Claude.
 - **Encyclopedia** (`geocoach encyclopedia <cc>`): shows the plonkit-based sheet from
   `encyclopedia/`, regional sections first. Instant, no Claude.
+- **Ask a question** (`geocoach ask "how do I tell Sabah from mainland Malaysia"`): answers
+  a free-text GeoGuessr question from the plonkit guides of the countries you name and your
+  PDF notes, with Claude (Sonnet by default, `--model opus`). Saved under `data/reports/`.
 - **Stats** (`geocoach stats`): weak countries and regions, region and country confusions,
   time-to-guess buckets, rating trend. Local only.
 - **Index meta PDFs** (`geocoach ingest` then `geocoach digest`): indexes new or changed PDFs
@@ -326,6 +330,41 @@ def training(
 ) -> None:
     """Suggest slashP maps covering your weak countries."""
     run_training(last, mode, min_locations, subdivisions, no_open)
+
+
+def _menu_ask() -> None:
+    try:
+        question = console.input("Your question: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        raise typer.Exit(0) from None
+    if not question:
+        raise typer.Exit(0)
+    run_ask(question)
+
+
+def run_ask(question: str, model: str = runner.ANALYSIS_MODEL) -> None:
+    from geocoach import ask
+
+    store = open_store()
+    try:
+        bundle = ask.prepare_question(
+            store, question, plonkit.PlonkitClient(), log=lambda m: err.print(f"[dim]{m}[/dim]")
+        )
+    finally:
+        store.close()
+    if bundle.countries:
+        err.print(f"[dim]countries: {', '.join(bundle.countries)}[/dim]")
+    report = runner.run_claude(bundle.prompt, "ask", model)
+    err.print(f"[dim]saved {report}[/dim]")
+
+
+@app.command("ask")
+def ask_cmd(
+    question: str = typer.Argument(..., help="your GeoGuessr question"),
+    model: str = typer.Option(runner.ANALYSIS_MODEL, "--model", help="claude model alias"),
+) -> None:
+    """Answer a GeoGuessr question from plonkit and your meta PDFs."""
+    run_ask(question, model)
 
 
 def run_encyclopedia(country: str) -> None:

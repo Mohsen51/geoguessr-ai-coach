@@ -144,23 +144,29 @@ def ingest(
     return done
 
 
-def _fts_query(text: str) -> str:
-    terms = re.findall(r"\w+", text)
-    return " ".join(f'"{t}"' for t in terms) if terms else '""'
-
-
-def search(store: Store, query: str, country: str | None = None, limit: int = 8) -> list[dict]:
+def search(
+    store: Store, query: str, country: str | None = None, limit: int = 8, any_term: bool = False
+) -> list[dict]:
+    """BM25 search; all terms must match unless any_term, then one is enough."""
+    terms = re.findall(r"\w+", query)
+    if not terms:
+        return []
+    fts = (" OR " if any_term else " ").join(f'"{t}"' for t in terms)
     sql = (
         "SELECT c.id, c.doc, c.page, c.country_tags, c.text, c.kind, bm25(meta_fts) AS rank "
         "FROM meta_fts JOIN meta_chunks c ON c.id = meta_fts.rowid WHERE meta_fts MATCH ?"
     )
-    params: list = [_fts_query(query)]
+    params: list = [fts]
     if country:
         sql += " AND (' ' || c.country_tags || ' ') LIKE ?"
         params.append(f"% {country.lower()} %")
     sql += " ORDER BY rank LIMIT ?"
     params.append(limit)
     return [dict(r) for r in store.conn.execute(sql, params).fetchall()]
+
+
+def search_any(store: Store, query: str, country: str | None, limit: int) -> list[dict]:
+    return search(store, query, country, limit, any_term=True)
 
 
 def chunks_for_country(store: Store, country: str, limit: int = 20) -> list[dict]:
