@@ -103,3 +103,19 @@ def test_prepare_analysis_uses_plonkit_tips_first(store):
         if "Bonus notes" in bundle.prompt
         else True
     )
+
+
+def test_prepare_analysis_inlines_plonkit_regional_tips(store):
+    from geocoach import plonkit
+
+    guide = plonkit.parse_preloaded(
+        (
+            __import__("pathlib").Path(__file__).parent / "fixtures" / "plonkit_guide.html"
+        ).read_text()
+    )
+    plonkit.ingest_guide(store, "brazil", "BR", guide)
+    bundle = coach.prepare_analysis(store, None, 5, [Mode.NMPZ], max_rounds=6, focus="region")
+    assert "Plonkit regional clues for Brazil (actual region Bahia):" in bundle.prompt
+    assert "* The north has pine forests." in bundle.prompt
+    assert "get_plonkit('br'" not in bundle.prompt  # no dividers, so no outline line
+    assert "use them, and call\nget_plonkit(country, query) when a clue you see" in bundle.prompt

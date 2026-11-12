@@ -18,6 +18,7 @@ def round_block(
     meta_pages: list[str] = (),
     plonkit_tips: list[str] = (),
     plonkit_outline: list[str] = (),
+    plonkit_region_tips: list[str] = (),
 ) -> str:
     timing = f", answered in {r.time_to_guess_s:.0f}s" if r.time_to_guess_s else ""
     region = f", {r.region}" if r.region else ""
@@ -41,10 +42,14 @@ def round_block(
     if plonkit_tips:
         lines.append(f"- Plonkit, identifying {country_name(r.country)}:")
         lines += [f"  * {t[:500]}" for t in plonkit_tips]
+    if plonkit_region_tips:
+        where = f" (actual region {r.region})" if r.region else ""
+        lines.append(f"- Plonkit regional clues for {country_name(r.country)}{where}:")
+        lines += [f"  * {t[:500]}" for t in plonkit_region_tips]
     if plonkit_outline:
         lines.append(
-            f"- Plonkit regional clues for {country_name(r.country)}, call "
-            f"get_plonkit('{r.country}', query) with the region or clue you see: "
+            f"- More Plonkit sections for {country_name(r.country)}, call "
+            f"get_plonkit('{r.country}', query) when a clue you see is not covered above: "
             + "; ".join(plonkit_outline)
         )
     if meta_snippets:
@@ -110,8 +115,10 @@ Format: one section per round whose heading repeats the round heading below exac
 ("### Round N of duel XXXXXXXX"), then a final "## Summary" section with a cross-round summary:
 recurring confusions, whether I answer too fast or too slow, and a study list of at most 5
 items (country or region plus the exact clue to learn). Plonkit is the
-base knowledge: call get_plonkit(country, query) to check a clue you see in the image. My PDF
-notes are a bonus on top; call get_meta_pages for a country if they look relevant. Keep it concrete.
+base knowledge: the relevant tips are quoted under each round, use them, and call
+get_plonkit(country, query) when a clue you see is not covered. My PDF notes are a bonus on
+top; call get_meta_pages for a country if they look relevant. End the Summary with one line
+naming the Plonkit tips and tools you actually used. Keep it concrete.
 
 Aggregates: weakest countries: {weak or "n/a"}. Country confusions: {conf or "n/a"}.
 Weakest regions (country right, pin wrong): {weak_regions or "n/a"}.
