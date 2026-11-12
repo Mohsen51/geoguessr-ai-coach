@@ -55,8 +55,10 @@ def prepare_analysis(
         meta_pages = [
             str(metas.render_page(d, p)) for d, p in metas.pages_for_country(store, r.country, 1)
         ]
-        tips, outline = plonkit_context(store, r)
-        blocks.append(prompts.round_block(r, paths, snippets, cards, meta_pages, tips, outline))
+        tips, region_tips, outline = plonkit_context(store, r)
+        blocks.append(
+            prompts.round_block(r, paths, snippets, cards, meta_pages, tips, outline, region_tips)
+        )
     summary = {
         "weak_countries": analysis.weak_countries(reviews),
         "confusions": analysis.confusions(reviews),
@@ -96,11 +98,14 @@ def identifying_tips(store: Store, country: str, limit: int) -> list[str]:
     return sections[0]["tips"][:limit] if sections else []
 
 
-def plonkit_context(store: Store, r: RoundReview) -> tuple[list[str], list[str]]:
-    """Identifying tips when the country was missed, the regional outline otherwise."""
+def plonkit_context(store: Store, r: RoundReview) -> tuple[list[str], list[str], list[str]]:
+    """Identifying tips when the country was missed, regional tips always, plus the outline."""
+    names = [n for n in (r.region, r.guess_region if r.country_hit else "") if n]
+    region_tips = plonkit.regional_tips(store, r.country, names, 6)
+    outline = plonkit.regional_outline(store, r.country, 12)
     if r.loss_type == "lost_on_pin" or r.country_hit:
-        return [], plonkit.regional_outline(store, r.country)
-    return identifying_tips(store, r.country, 5), plonkit.regional_outline(store, r.country, 12)
+        return [], region_tips, outline
+    return identifying_tips(store, r.country, 5), region_tips, outline
 
 
 def clue_lines(

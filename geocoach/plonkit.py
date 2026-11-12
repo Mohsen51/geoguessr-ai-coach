@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -218,12 +219,19 @@ def sync(
     return done
 
 
+# The guide's own country is always the first tag (see ingest_guide).
+OWN_GUIDE = "(country_tags = ? OR country_tags LIKE ?) ORDER BY page, id"
+
+
+def own_guide_params(country: str) -> tuple[str, str]:
+    return country.lower(), f"{country.lower()} %"
+
+
 def sections_for_country(store: Store, country: str) -> list[dict]:
     """Full plonkit text for a country, grouped by section, from the local index."""
     rows = store.conn.execute(
-        "SELECT page, text FROM meta_chunks WHERE kind = 'plonkit' AND doc LIKE ? "
-        "AND (' ' || country_tags || ' ') LIKE ? ORDER BY page, id",
-        (DOC_PREFIX + "%", f"% {country.lower()} %"),
+        "SELECT page, text FROM meta_chunks WHERE kind = 'plonkit' AND " + OWN_GUIDE,
+        own_guide_params(country),
     ).fetchall()
     out: dict[int, dict] = {}
     for r in rows:
@@ -239,9 +247,8 @@ REGIONAL_RE = re.compile(r"region|province|state|area|subdivision|north|south|ea
 def regional_outline(store: Store, country: str, limit: int = 30) -> list[str]:
     """Divider titles of the regional sections, a table of contents for get_plonkit queries."""
     rows = store.conn.execute(
-        "SELECT DISTINCT text FROM meta_chunks WHERE kind = 'plonkit' AND doc LIKE ? "
-        "AND (' ' || country_tags || ' ') LIKE ? ORDER BY page, id",
-        (DOC_PREFIX + "%", f"% {country.lower()} %"),
+        "SELECT DISTINCT text FROM meta_chunks WHERE kind = 'plonkit' AND " + OWN_GUIDE,
+        own_guide_params(country),
     ).fetchall()
     seen: list[str] = []
     for r in rows:
@@ -250,6 +257,53 @@ def regional_outline(store: Store, country: str, limit: int = 30) -> list[str]:
         if divider and REGIONAL_RE.search(section) and divider not in seen:
             seen.append(divider)
     return seen[:limit]
+
+
+GENERIC_WORDS = {
+    "territory",
+    "region",
+    "province",
+    "state",
+    "district",
+    "county",
+    "oblast",
+    "krai",
+    "republic",
+    "federal",
+    "autonomous",
+    "island",
+    "islands",
+    "north",
+    "south",
+    "east",
+    "west",
+    "central",
+    "capital",
+}
+
+
+def _fold(text: str) -> str:
+    folded = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in folded if not unicodedata.combining(c)).lower()
+
+
+def regional_tips(store: Store, country: str, names: list[str], limit: int = 6) -> list[str]:
+    """Regional tips naming one of the places first, then the section's first tips."""
+    rows = store.conn.execute(
+        "SELECT text FROM meta_chunks WHERE kind = 'plonkit' AND " + OWN_GUIDE,
+        own_guide_params(country),
+    ).fetchall()
+    words = {_fold(w) for n in names for w in re.findall(r"\w{4,}", n)} - GENERIC_WORDS
+    hits: list[str] = []
+    rest: list[str] = []
+    for r in rows:
+        head, _, body = r["text"].partition("] ")
+        section, _, divider = head.lstrip("[").partition(" > ")
+        if not (REGIONAL_RE.search(section) or section.lower().startswith("spotlight")):
+            continue
+        tip = f"{divider}: {body}" if divider else body
+        (hits if any(w in _fold(body) for w in words) else rest).append(tip)
+    return (hits + rest)[:limit]
 
 
 def images_for_guide(client: PlonkitClient, slug: str, guide: dict, limit: int = 12):

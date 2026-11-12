@@ -123,3 +123,22 @@ def test_images_stop_at_challenge_page():
     client = plonkit.PlonkitClient(min_interval_s=0)
     guide = plonkit.parse_preloaded(FIXTURE)
     assert plonkit.images_for_guide(client, "testland", guide, limit=5) == []
+
+
+def test_regional_tips_prefer_named_places_then_fill(tmp_path):
+    store = Store(tmp_path / "t.db")
+    guide = plonkit.parse_preloaded(FIXTURE)
+    plonkit.ingest_guide(store, "testland", "TL", guide)
+    assert plonkit.regional_tips(store, "tl", ["North Province"]) == ["The north has pine forests."]
+    assert plonkit.regional_tips(store, "tl", ["Sao Paulo"]) == ["The north has pine forests."]
+    assert plonkit.regional_tips(store, "xx", ["North"]) == []
+
+
+def test_country_lookups_ignore_neighbour_guides(tmp_path):
+    store = Store(tmp_path / "t.db")
+    guide = plonkit.parse_preloaded(FIXTURE)
+    plonkit.ingest_guide(store, "testland", "TL", guide)
+    plonkit.ingest_guide(store, "spain", "ES", guide)  # mentions Spain, tagged tl too
+    assert len(plonkit.sections_for_country(store, "es")) == 3
+    assert plonkit.sections_for_country(store, "tl")[0]["tips"][0].startswith("Testland uses")
+    assert plonkit.regional_tips(store, "tl", []) == ["The north has pine forests."]
