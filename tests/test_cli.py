@@ -10,8 +10,8 @@ run = CliRunner()
 def fake_report(captured):
     """Stand-in for runner.run_claude that writes a minimal report file."""
 
-    def run_claude(prompt, name, model=None):
-        captured.update(p=prompt, n=name)
+    def run_claude(prompt, name, model=None, echo=None):
+        captured.update(p=prompt, n=name, echo=echo)
         config.ensure_dirs()
         path = config.REPORTS_DIR / "r.md"
         path.write_text(f"# x\n\nPrompt:\n\n{prompt}{cli.runner.ANSWER_SEPARATOR}## Summary\nok\n")
@@ -22,6 +22,7 @@ def fake_report(captured):
 
 @pytest.fixture(autouse=True)
 def tmp_env(tmp_path, monkeypatch, duel):
+    monkeypatch.setattr(cli.render, "glow_path", lambda: None)
     for name in ("DATA_DIR", "PANOS_DIR", "PAGES_DIR", "REPORTS_DIR"):
         monkeypatch.setattr(config, name, tmp_path / name.lower())
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "db.sqlite")
@@ -322,3 +323,15 @@ def test_confirm_search_defaults_to_no(monkeypatch):
     assert cli.confirm_search("Spain") is False
     monkeypatch.setattr(cli.console, "input", lambda prompt: "y")
     assert cli.confirm_search("Spain") is True
+
+
+def test_ask_with_glow_renders_the_finished_answer(monkeypatch):
+    captured = {}
+    shown = []
+    monkeypatch.setattr(cli.render, "glow_path", lambda: "/usr/bin/glow")
+    monkeypatch.setattr(cli.render, "show_markdown", lambda text, console: shown.append(text))
+    monkeypatch.setattr(cli.runner, "run_claude", fake_report(captured))
+    monkeypatch.setattr(cli.plonkit, "PlonkitClient", lambda: None)
+    assert run.invoke(cli.app, ["ask", "Spain?"]).exit_code == 0
+    assert captured["echo"] is not None and captured["echo"]("x") is None  # streaming muted
+    assert shown == ["## Summary\nok\n"]
