@@ -9,7 +9,6 @@ from collections.abc import Sequence
 
 import typer
 from rich.console import Console
-from rich.markdown import Markdown
 from rich.table import Table
 
 from geocoach import (
@@ -20,6 +19,7 @@ from geocoach import (
     metas,
     panorama,
     plonkit,
+    render,
     report,
     runner,
     sheets,
@@ -135,6 +135,7 @@ Esc or Ctrl-C at any prompt returns to the menu or quits. Each entry has a subco
 - **Ask a question** (`geocoach ask "how do I tell Sabah from mainland Malaysia"`): answers
   a free-text GeoGuessr question from the plonkit guides of the countries you name and your
   PDF notes, with Claude (Sonnet by default, `--model opus`). Saved under `data/reports/`.
+  Markdown is rendered with [glow](https://github.com/charmbracelet/glow) when installed.
   Pick "With Street View examples" (`--enhanced`) to add images of the plonkit example
   locations and your own rounds there, each checked by Haiku before it is shown, in an HTML
   page (`--no-open` to skip). When no example can be verified for a country you are asked
@@ -154,7 +155,7 @@ Secrets: `GEOGUESSR_NCFA` in `.envrc` or `.env`. Data and caches live in `data/`
 
 
 def show_help() -> None:
-    console.print(Markdown(MENU_HELP))
+    render.show_markdown(MENU_HELP, console)
 
 
 def pause() -> None:
@@ -403,7 +404,12 @@ def run_ask(
             bundle = bundle.with_examples(question, found)
     finally:
         store.close()
-    saved = runner.run_claude(bundle.prompt, "ask", model)
+    if render.glow_path():
+        err.print("[dim]Claude is answering, the answer shows when complete...[/dim]")
+        saved = runner.run_claude(bundle.prompt, "ask", model, echo=lambda _: None)
+        render.show_markdown(runner.report_answer(saved), console)
+    else:
+        saved = runner.run_claude(bundle.prompt, "ask", model)
     log(f"saved {saved}")
     if enhanced:
         page = report.write_ask_report(question, runner.report_answer(saved), bundle.examples)
@@ -433,7 +439,7 @@ def run_encyclopedia(country: str) -> None:
             "by the monthly workflow; run `geocoach build-sheets` after `geocoach plonkit`."
         )
         raise typer.Exit(1)
-    console.print(Markdown(text))
+    render.show_markdown(text, console)
 
 
 @app.command()
